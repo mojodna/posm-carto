@@ -42,6 +42,7 @@
 
 @aeroway:           #eaeaea;
 
+@breakwater-color:  #aaa;
 @dam:               #adadad;
 @dam-line:          #444444;
 
@@ -73,7 +74,7 @@
 @town_text:         #222;
 @town_halo:         @place_halo;
 
-@poi_text:          @poi_text;  
+@poi_text:          @poi_text;
 
 @road_text:         #222;
 @road_halo:         #fff;

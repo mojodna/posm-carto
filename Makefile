@@ -53,7 +53,7 @@ distclean: clean
 
 .PRECIOUS: %.xml
 
-%.xml: %.mml db/naturalearth shp fonts
+%.xml: %.mml db/naturalearth shp fonts db/functions db/water_polygons
 	@echo
 	@echo Building $@
 	@echo
@@ -76,10 +76,24 @@ db: DATABASE_URL
 db/postgis: db
 	$(call create_extension)
 
+.PHONY: db/functions
+
+db/functions: db/zoom
+
 define create_extension
 @psql -c "\dx $(notdir $@)" | grep $(notdir $@) > /dev/null 2>&1 || \
 	psql -v ON_ERROR_STOP=1 -qX1c "CREATE EXTENSION $(notdir $@)"
 endef
+
+define create_function
+psql -c "\df $(notdir $@)" | grep -i $(notdir $@) > /dev/null 2>&1 || \
+	psql -v ON_ERROR_STOP=1 -qX1f sql/$(notdir $@).sql
+endef
+
+.PHONY: db/zoom
+
+db/zoom: db
+	$(call create_function)
 
 shp: shp/water_polygons.shp \
 	shp/water_polygons.dbf \
@@ -92,6 +106,22 @@ shp: shp/water_polygons.shp \
 data/water_polygons.zip:
 	@mkdir -p $(dir $@)
 	curl -sfL http://data.openstreetmapdata.com/water-polygons-split-3857.zip -z $@ -o $@
+
+.PHONY: db/water_polygons
+
+db/water_polygons: | db/postgis data/water_polygons.zip
+	@psql -c "\d $(notdir $@)" > /dev/null 2>&1 || \
+	ogr2ogr --config PG_USE_COPY YES \
+			-nln $(notdir $@) \
+			-t_srs EPSG:3857 \
+			-lco ENCODING=UTF-8 \
+			-nlt PROMOTE_TO_MULTI \
+			-lco POSTGIS_VERSION=2.0 \
+			-lco GEOMETRY_NAME=geom \
+			-lco SRID=3857 \
+			-lco PRECISION=NO \
+			-f PGDump /vsistdout/ \
+			/vsizip/$(word 2, $|)/water-polygons-split-3857/water_polygons.shp | psql -q
 
 shp/%.shp \
 shp/%.dbf \

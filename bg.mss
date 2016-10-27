@@ -1,13 +1,296 @@
-Map { 
+Map {
   background-color: @land;
   font-directory: url('fonts/');
+}
+
+#landcover {
+  ['mapnik::geometry_type'=polygon] {
+    polygon-fill: #cdc;
+  }
+
+  ['mapnik::geometry_type'=linestring] {
+    line-width: 1;
+    line-color: #cdc;
+  }
+}
+
+#landuse {
+  polygon-fill: #ccd;
+  polygon-comp-op: multiply;
+}
+
+#water {
+  ['mapnik::geometry_type'=polygon] {
+    polygon-fill: #3a86b1;
+  }
+
+  ['mapnik::geometry_type'=linestring] {
+    line-width: 1;
+    line-color: #3a86b1;
+  }
+}
+
+#admin {
+  ::background {
+    line-width: 15;
+    opacity: 0.1;
+    line-color: #fc0;
+    line-join: round;
+    line-cap: square;
+  }
+
+  line-width: 1;
+  line-color: #fff;
+  line-dasharray: 15, 15;
+  line-join: round;
+  line-cap: butt;
+}
+
+#man-made {
+  ['mapnik::geometry_type'=polygon] {
+    polygon-fill: #74373a;
+
+    [man_made = 'pier'][zoom >= 12] {
+      polygon-fill: @land;
+    }
+
+    [man_made = 'breakwater'][zoom >= 12],
+    [man_made = 'groyne'][zoom >= 12] {
+      polygon-fill: @breakwater-color;
+    }
+  }
+
+  ['mapnik::geometry_type'=linestring] {
+    line-width: 1;
+    line-color: #74373a;
+
+    [man_made = 'pier'][zoom >= 12] {
+      line-width: 1.5;
+      line-color: @land;
+      [zoom >= 13] { line-width: 3; }
+      [zoom >= 16] { line-width: 7; }
+    }
+
+    [man_made = 'breakwater'][zoom >= 12],
+    [man_made = 'groyne'][zoom >= 12] {
+      line-width: 1;
+      line-color: @breakwater-color;
+      [zoom >= 13] { line-width: 2; }
+      [zoom >= 16] { line-width: 4; }
+    }
+  }
+}
+
+#buildings {
+  polygon-fill: #cdc79f;
+  line-color: darken(#cdc79f, 10%);
+  line-width: 0.75;
+}
+
+#buildings_3d {
+  building-fill: #cdc79f;
+  building-height: [levels];
+  building-fill-opacity: 0.66;
+}
+
+#tunnels {
+  line-width: [width] * 2;
+  line-color: #999;
+  line-join: round;
+  line-cap: square;
+
+  [zoom >= 13] {
+    line-width: [width];
+    line-dasharray: 7.5, 10;
+    line-opacity: 0.15;
+    comp-op: multiply;
+  }
+}
+
+#infrastructure {
+  ::casing {
+    line-width: 0;
+    line-color: #555;
+    line-join: round;
+    line-cap: round;
+  }
+
+  line-width: [width] * 2;
+  line-color: #666;
+  line-join: round;
+  line-cap: round;
+
+  ::left,
+  ::right {
+    line-width: 0;
+  }
+
+  [zoom >= 13] {
+    line-width: [width];
+  }
+
+  [feature =~ 'aeroway_.*'] {
+    line-cap: butt;
+    line-width: [width];
+  }
+
+  [zoom > 13][feature =~ 'railway_.*'] {
+    ::right {
+      line-color: #777;
+      line-offset: [width];
+      line-width: [width] * 1.5;
+      line-dasharray: 1, 6;
+    }
+  }
+
+  [feature =~ 'highway_.*'] {
+    ::casing {
+      line-width: [width] + 1.5;
+    }
+
+    line-color: #f2f2ec;
+
+    [zoom <= 14],
+    [zoom <= 15][prio < 340],
+    [prio < 150] {
+      ::casing {
+        line-width: 0;
+      }
+
+      line-color: #888;
+    }
+  }
+
+  [zoom >= 16][feature = 'highway_track'] {
+    ::casing {
+      line-width: 0;
+    }
+
+    line-width: 0;
+
+    ::left,
+    ::right {
+      line-width: 0.75;
+      line-color: #888;
+      line-dasharray: 10, 3;
+      line-join: round;
+      line-cap: round;
+
+      [access='private'] {
+        line-color: lighten(mix(#888, red, 50%), 30%);
+      }
+    }
+
+    ::left {
+      line-offset: [width] / -2;
+    }
+
+    ::right {
+      line-offset: [width] / 2;
+    }
+  }
+}
+
+#bridges {
+  ::casing {
+    line-width: 0;
+    line-color: #666;
+    line-join: round;
+    line-cap: butt;
+  }
+
+  line-width: [width] * 2;
+  line-color: #666;
+  line-join: round;
+  line-cap: round;
+
+  ::left,
+  ::right {
+    line-width: 0;
+  }
+
+  [zoom >= 13] {
+    line-width: [width];
+  }
+
+  [zoom > 13][feature =~ 'railway_.*'] {
+    ::right {
+      line-color: #777;
+      line-offset: [width];
+      line-width: [width] * 1.5;
+      line-dasharray: 1, 6;
+    }
+  }
+
+  [feature =~ 'highway_.*'] {
+    ::casing {
+      line-width: [width] + 2;
+    }
+
+    line-color: #f2f2ec;
+
+    [zoom <= 14],
+    [zoom <= 15][prio < 340],
+    [prio < 150] {
+      ::casing {
+        line-width: 0;
+      }
+
+      line-color: #666;
+    }
+  }
+
+  [zoom >= 16][feature = 'highway_track'] {
+    ::casing {
+      line-width: 0;
+    }
+
+    line-width: 0;
+
+    ::left,
+    ::right {
+      line-width: 0.75;
+      line-color: #888;
+      line-dasharray: 10, 3;
+      line-join: round;
+      line-cap: round;
+
+      [access='private'] {
+        line-color: lighten(mix(#888, red, 50%), 30%);
+      }
+    }
+
+    ::left {
+      line-offset: [width] / -2;
+    }
+
+    ::right {
+      line-offset: [width] / 2;
+    }
+  }
+}
+
+/*#routes {
+  line-width: 2;
+  line-color: #00ff00;
+}*/
+
+#utilities {
+  ['mapnik::geometry_type'=polygon] {
+    polygon-fill: #3f53c1;
+  }
+
+  ['mapnik::geometry_type'=linestring] {
+    line-width: 1;
+    line-color: #3f53c1;
+  }
 }
 
 // =====================================================================
 // WATER AREAS
 // =====================================================================
 
-#ne_10m_lakes,
+/*#ne_10m_lakes,
 #coastline_water,
 #water {
   polygon-fill: @water;
@@ -26,7 +309,7 @@ Map {
     polygon-geometry-transform: translate(2,2);
     polygon-clip: false;
   }
-}
+}*/
 
 // =====================================================================
 // WATER WAYS
@@ -106,7 +389,7 @@ Map {
 // LANDUSE
 // =====================================================================
 
-#landuse[zoom>=7] {
+/*#landuse[zoom>=7] {
   [class='pitch'] {
     polygon-fill: @pitch;
     [zoom>14] {
@@ -164,13 +447,13 @@ Map {
       line-color: #480;
       line-opacity: 0.5;
       line-join: round;
-      [zoom>=10] { 
+      [zoom>=10] {
         line-width: 1.2;
         line-offset: -1;
       }
     }
   }
-  [class='common'] [zoom>=15] { 
+  [class='common'] [zoom>=15] {
     line-color: #2e5f01;
     line-width: 2;
     line-dasharray: 4,1;
@@ -207,7 +490,7 @@ Map {
     polygon-fill: darken(@grass, 10);
     polygon-opacity:0.25;
   }
-}
+}*/
 
 #landuse_overlay[zoom>=12] {
   [class='wetland'] {
@@ -286,7 +569,7 @@ Map {
     image-filters-inflate: true;
   }
   ::structure {
-    [zoom=13] {  
+    [zoom=13] {
       polygon-fill:lighten(@building,4);
     }
     [zoom=14] {
@@ -401,7 +684,7 @@ Map {
     [zoom>=6][zoom<=7] { line-width: 1.8; opacity:0.75; }
     [zoom>=8][zoom<=9] { line-width: 2.2; opacity:0.6; }
 }
-#admin[zoom>=2][admin_level<=2],
+/*#admin[zoom>=2][admin_level<=2],
 #admin[zoom>=6][admin_level<=4],
 #admin[zoom>=8][admin_level<=6],
 #admin[zoom>=10][admin_level<=8],
@@ -462,7 +745,7 @@ Map {
     [zoom>=12][zoom<=13] { line-width: 3.0; }
     [zoom>=14][zoom<=15] { line-width: 3.4; }
     [zoom>=16] { line-width: 2.8; }
-  }
+  }*/
   /*
   The following code prevents admin boundaries from being rendered on top of
   each other. Comp-op works on the entire attachment, not on the individual
@@ -473,7 +756,7 @@ Map {
   darker than @admin-boundaries).
   The SQL has `ORDER BY admin_level`, so the boundary with the lowest
   admin_level is rendered on top, and therefore the only visible boundary.
-  */
   opacity: 0.4;
   comp-op: darken;
 }
+  */

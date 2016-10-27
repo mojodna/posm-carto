@@ -3,11 +3,11 @@
 name:             'POSM (Portable OpenStreetMap)'
 description:      'POSM style based on the American Red Cross HDM style, ported from TileMill2 (Mapbox Studio Classic) back to TileMill1 for offline rendering'
 attribution:      'Map Data © OpenStreetMap'
-center:           [ 0, 0, 3]
+center:           [-122.3321, 47.6062, 18]
 format:           png8
 interactivity:    false
 minzoom:          1
-maxzoom:          24
+maxzoom:          22
 srs:              '+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0.0 +k=1.0 +units=m +nadgrids=@null +wktext +no_defs +over'
 metatile:         2
 
@@ -55,23 +55,876 @@ Stylesheet:
 
 Layer:
 
-
   - <<: *layer
-    name: ne_10m_rivers_lake_centerlines_scale_rank
-    id:   ne_10m_rivers_lake_centerlines_scale_rank
-    properties:
-      minzoom: 4
-      maxzoom: 8
+    # status: off
+    name: landcover
+    id:   landcover
     Datasource:
       <<: *postgis
-      geometry_field: geom
-      table: ne_10m_rivers_lake_centerlines_scale_rank
-      encoding: "ISO-8859-1"
+      geometry_field: way
+      table: >
+        (
+          SELECT
+            way,
+            tags -> 'natural' "natural"
+          FROM planet_osm_polygon
+          WHERE way && !bbox!
+            AND tags ? 'natural'
+            AND way_area > 0.01 * !pixel_width!::real * !pixel_height!::real
+        UNION ALL
+          SELECT
+            way,
+            tags -> 'natural' "natural"
+          FROM planet_osm_line
+          WHERE way && !bbox!
+            AND tags ? 'natural'
+        ) AS _
 
   - <<: *layer
+    # status: off
+    name: landuse
+    id:   landuse
+    properties:
+      minzoom: 12
+    Datasource:
+      <<: *postgis
+      geometry_field: way
+      table: >
+        (
+          SELECT
+            way,
+            tags -> 'landuse' landuse,
+            tags -> 'leisure' leisure
+          FROM planet_osm_polygon
+          WHERE way && !bbox!
+            AND tags ?| ARRAY['landuse', 'leisure']
+            AND way_area > 0.01 * !pixel_width!::real * !pixel_height!::real
+            AND (zoom(!scale_denominator!) >= 13
+              OR (zoom(!scale_denominator!) >= 12 AND way_area > 16 * !pixel_width!::real * !pixel_height!::real))
+        ) AS _
+
+  - <<: *layer
+    # status: off
+    name: water
+    id:   water
+    Datasource:
+      <<: *postgis
+      geometry_field: way
+      table: >
+        (
+          SELECT
+            geom way,
+            null landuse,
+            'coastline' "natural",
+            null water,
+            null waterway
+          FROM water_polygons
+          WHERE geom && !bbox!
+        UNION ALL
+          SELECT
+            way,
+            tags -> 'landuse' landuse,
+            tags -> 'natural' "natural",
+            tags -> 'water' water,
+            tags -> 'waterway' waterway
+          FROM planet_osm_polygon
+          WHERE way && !bbox!
+            AND tags ?| ARRAY['landuse', 'natural', 'water', 'waterway']
+            AND (tags ? 'water' OR tags ? 'waterway' OR tags -> 'landuse' IN ('reservoir', 'pond') OR tags -> 'natural' IN ('water'))
+            AND way_area > 0.01 * !pixel_width!::real * !pixel_height!::real
+        UNION ALL
+          SELECT
+            way,
+            tags -> 'landuse' landuse,
+            tags -> 'natural' "natural",
+            tags -> 'water' water,
+            tags -> 'waterway' waterway
+          FROM planet_osm_line
+          WHERE way && !bbox!
+            AND tags ?| ARRAY['natural', 'water', 'waterway']
+            AND (tags ? 'water' OR tags ? 'waterway' OR tags -> 'natural' IN ('pond'))
+        UNION ALL
+          SELECT
+            geom way,
+            null landuse,
+            'water' "natural",
+            'river' water,
+            'river' waterway
+          FROM ne_10m_rivers_lake_centerlines_scale_rank
+          WHERE geom && !bbox!
+            AND featurecla = 'River'
+            AND zoom(!scale_denominator!) BETWEEN 4 AND 8
+        ) AS _
+
+  - <<: *layer
+    status: off
+    name: admin
+    id:   admin
+    geometry: "linestring"
+    Datasource:
+      <<: *postgis
+      geometry_field: way
+      table: >
+        (
+          SELECT
+            way,
+            tags -> 'boundary boundary',
+            tags -> 'boundary boundary',
+            to_number(tags -> 'admin_level', 'FM99') as admin_level
+          FROM planet_osm_line
+          WHERE way && !bbox!
+            AND tags ? 'boundary'
+          ORDER BY to_number(tags -> 'admin_level', 'FM99') DESC -- With 10 as a valid value, we need to do a numeric ordering, not a text ordering
+        ) AS _
+
+  - <<: *layer
+    # status: off
+    name: man-made
+    id:   man-made
+    Datasource:
+      <<: *postgis
+      geometry_field: way
+      table: >
+        (
+          SELECT
+            way,
+            tags -> 'man_made' man_made
+          FROM planet_osm_polygon
+          WHERE way && !bbox!
+            AND tags ? 'man_made'
+        UNION ALL
+          SELECT
+            way,
+            tags -> 'man_made' man_made
+          FROM planet_osm_polygon
+          WHERE way && !bbox!
+            AND tags ? 'man_made'
+            AND way_area > 0.01 * !pixel_width!::real * !pixel_height!::real
+        ) AS _
+
+  - <<: *layer
+    # status: off
+    name: buildings
+    id:   buildings
+    properties:
+      minzoom: 12
+    Datasource:
+      <<: *postgis
+      geometry_field: way
+      table: >
+        (
+          SELECT
+            way,
+            tags -> 'building' building,
+            tags -> 'building:levels' levels
+          FROM planet_osm_polygon
+          WHERE way && !bbox!
+            AND tags ? 'building'
+            AND tags -> 'building' != 'no'
+            AND way_area > 0.01 * !pixel_width!::real * !pixel_height!::real
+            AND (zoom(!scale_denominator!) >= 15
+              OR way_area > 16 * !pixel_width!::real * !pixel_height!::real)
+          ORDER BY z_order, way_area DESC
+        ) AS _
+
+  - <<: *layer
+    # status: off
+    name: infrastructure
+    id:   infrastructure
+    geometry: "linestring"
+    Datasource:
+      <<: *postgis
+      # This is one of the most complex layers, so it bears explaining in some detail
+      # It is necessary to
+      # - Have roads and railways in the same layer to get ordering right
+      # - Return two linestrings for ways which are both a road and railway
+      # - Compute z_order here, rather than rely on osm2pgsql z_order
+      table: |-
+        (SELECT
+          *,
+          GREATEST(0.5, COALESCE(_width, COALESCE(lanes, default_lane_count) * default_lane_width) / !pixel_width!) width
+        FROM
+        (SELECT
+            way,
+            (CASE WHEN substr(feature, length(feature)-3, 4) = 'link' THEN substr(feature, 0, length(feature)-4) ELSE feature END) AS feature,
+            horse,
+            foot,
+            bicycle,
+            tracktype,
+            int_surface,
+            access,
+            construction,
+            service,
+            link,
+            layernotnull,
+            prio,
+            -- TODO write a function that handles units (feet, inches)
+            to_number(lanes, 'FM99') lanes,
+            to_number(width, 'FM99') _width,
+            default_lane_count,
+            default_lane_width
+          FROM ( -- begin "features" subselect that contains both roads and rail/aero
+            SELECT
+                way,
+                ('highway_' || highway) AS feature, -- only motorway to tertiary links are accepted later on
+                horse,
+                foot,
+                bicycle,
+                tracktype,
+                CASE WHEN surface IN ('unpaved', 'compacted', 'dirt', 'earth', 'fine_gravel', 'grass', 'grass_paver', 'gravel', 'ground',
+                                      'mud', 'pebblestone', 'salt', 'sand', 'woodchips', 'clay') THEN 'unpaved'
+                  WHEN surface IN ('paved', 'asphalt', 'cobblestone', 'cobblestone:flattened', 'sett', 'concrete', 'concrete:lanes',
+                                      'concrete:plates', 'paving_stones', 'metal', 'wood') THEN 'paved'
+                  ELSE NULL
+                END AS int_surface,
+                CASE WHEN access IN ('destination') THEN 'destination'::text
+                  WHEN access IN ('no', 'private') THEN 'no'::text
+                  ELSE NULL
+                END AS access,
+                construction,
+                CASE
+                  WHEN service IN ('parking_aisle', 'drive-through', 'driveway') THEN 'INT-minor'::text
+                  ELSE 'INT-normal'::text
+                END AS service,
+                CASE
+                  WHEN substr(highway, length(highway)-3, 4) = 'link' THEN 'yes'
+                  ELSE 'no'
+                END AS link,
+                COALESCE(to_number(layer, 'FM99'), 0) layernotnull,
+                tags -> 'lanes' lanes,
+                tags -> 'width' width
+              FROM planet_osm_line
+              WHERE (tunnel IS NULL OR NOT tunnel IN ('yes', 'building_passage'))
+                AND (covered IS NULL OR NOT covered = 'yes')
+                AND (bridge IS NULL OR NOT bridge IN ('yes', 'boardwalk', 'cantilever', 'covered', 'low_water_crossing', 'movable', 'trestle', 'viaduct'))
+                AND tags ? 'highway'
+                AND (zoom(!scale_denominator!) >= 16
+                  OR (zoom(!scale_denominator!) >= 13 AND (NOT tags ? 'footway' OR tags -> 'footway' NOT IN ('sidewalk')))
+                  OR (zoom(!scale_denominator!) >= 12 AND tags -> 'highway' IN ('motorway', 'trunk', 'primary', 'secondary', 'tertiary'))
+                  OR (zoom(!scale_denominator!) >= 10 AND tags -> 'highway' IN ('motorway', 'trunk', 'primary')))
+                -- end of road select
+            UNION ALL
+            SELECT
+                way,
+                COALESCE(
+                  ('railway_' || (CASE WHEN railway = 'preserved' AND service IN ('spur', 'siding', 'yard') THEN 'INT-preserved-ssy'::text
+                                       WHEN (railway = 'rail' AND service IN ('spur', 'siding', 'yard')) THEN 'INT-spur-siding-yard'
+                                       WHEN (railway = 'tram' AND service IN ('spur', 'siding', 'yard')) THEN 'tram-service' ELSE railway END)),
+                  ('aeroway_' || aeroway)
+                ) AS feature,
+                horse,
+                foot,
+                bicycle,
+                tracktype,
+                null surface,
+                CASE
+                  WHEN access IN ('destination') THEN 'destination'::text
+                  WHEN access IN ('no', 'private') THEN 'no'::text
+                  ELSE NULL
+                END AS access,
+                construction,
+                CASE WHEN service IN ('parking_aisle', 'drive-through', 'driveway') THEN 'INT-minor'::text ELSE 'INT-normal'::text END AS service,
+                'no' AS link,
+                COALESCE(to_number(layer, 'FM99'), 0) layernotnull,
+                tags -> 'lanes' lanes,
+                tags -> 'width' width
+              FROM planet_osm_line
+              WHERE (tunnel IS NULL OR NOT tunnel IN ('yes', 'building_passage'))
+                AND (covered IS NULL OR NOT covered = 'yes')
+                AND (bridge IS NULL OR NOT bridge IN ('yes', 'boardwalk', 'cantilever', 'covered', 'low_water_crossing', 'movable', 'trestle', 'viaduct'))
+                AND tags ?| ARRAY['railway', 'aeroway']
+                AND (zoom(!scale_denominator!) >= 12
+                  OR (zoom(!scale_denominator!) >= 10 AND tags ? 'aeroway'))
+                -- end of rail/aero select
+            ) AS features
+          JOIN (VALUES -- this join is also putting a condition on what is selected. features not matching it do not make it into the results.
+              ('railway_rail', 440),
+              ('railway_INT-preserved-ssy', 430),
+              ('railway_INT-spur-siding-yard', 430),
+              ('railway_subway', 420),
+              ('railway_narrow_gauge', 420),
+              ('railway_light_rail', 420),
+              ('railway_preserved', 420),
+              ('railway_funicular', 420),
+              ('railway_monorail', 420),
+              ('railway_miniature', 420),
+              ('railway_turntable', 420),
+              ('railway_tram', 410),
+              ('railway_tram-service', 405),
+              ('railway_disused', 400),
+              ('railway_construction', 400),
+              ('highway_motorway', 380),
+              ('highway_trunk', 370),
+              ('highway_primary', 360),
+              ('highway_secondary', 350),
+              ('highway_tertiary', 340),
+              ('highway_residential', 330),
+              ('highway_unclassified', 330),
+              ('highway_road', 330),
+              ('highway_living_street', 320),
+              ('highway_pedestrian', 310),
+              ('highway_raceway', 300),
+              ('highway_motorway_link', 240),
+              ('highway_trunk_link', 230),
+              ('highway_primary_link', 220),
+              ('highway_secondary_link', 210),
+              ('highway_tertiary_link', 200),
+              ('highway_service', 150),
+              ('highway_track', 110),
+              ('highway_path', 100),
+              ('highway_footway', 100),
+              ('highway_bridleway', 100),
+              ('highway_cycleway', 100),
+              ('highway_steps', 100),
+              ('highway_platform', 90),
+              ('railway_platform', 90),
+              ('aeroway_runway', 60),
+              ('aeroway_taxiway', 50),
+              ('highway_construction', 10)
+            ) AS ordertable (feature, prio)
+            USING (feature)
+          JOIN (VALUES -- this join is also putting a condition on what is selected. features not matching it do not make it into the results.
+              ('railway_rail', 1, 6),
+              ('railway_INT-preserved-ssy', 1, 6),
+              ('railway_INT-spur-siding-yard', 1, 6),
+              ('railway_subway', 1, 4),
+              ('railway_narrow_gauge', 1, 6),
+              ('railway_light_rail', 1, 4),
+              ('railway_preserved', 1, 6),
+              ('railway_funicular', 1, 4),
+              ('railway_monorail', 1, 4),
+              ('railway_miniature', 1, 2),
+              ('railway_turntable', 1, 6),
+              ('railway_tram', 1, 4),
+              ('railway_tram-service', 1, 4),
+              ('railway_disused', 1, 6),
+              ('railway_construction', 1, 6),
+              ('highway_motorway', 2, 5),
+              ('highway_trunk', 2, 4.75),
+              ('highway_primary', 2, 4.5),
+              ('highway_secondary', 2, 4.25),
+              ('highway_tertiary', 2, 4),
+              ('highway_residential', 2, 3),
+              ('highway_unclassified', 2, 3),
+              ('highway_road', 2, 3),
+              ('highway_living_street', 2, 3),
+              ('highway_pedestrian', 1, 5),
+              ('highway_raceway', 6, 4.5),
+              ('highway_motorway_link', 1, 4.5),
+              ('highway_trunk_link', 1, 4.5),
+              ('highway_primary_link', 1, 4.5),
+              ('highway_secondary_link', 1, 4.5),
+              ('highway_tertiary_link', 1, 4),
+              ('highway_service', 1, 4),
+              ('highway_track', 1, 3),
+              ('highway_path', 1, 1.5),
+              ('highway_footway', 1, 1.5),
+              ('highway_bridleway', 1, 1.5),
+              ('highway_cycleway', 2, 2.5),
+              ('highway_steps', 1, 1.5),
+              ('highway_platform', 1, 6),
+              ('railway_platform', 1, 6),
+              ('aeroway_runway', 1, 80),
+              ('aeroway_taxiway', 1, 15),
+              ('highway_construction', 2, 4.5)
+            ) AS lanetable (feature, default_lane_count, default_lane_width)
+            USING (feature)
+          ORDER BY
+            layernotnull,
+            prio,
+            CASE WHEN access IN ('no', 'private') THEN 0 WHEN access IN ('destination') THEN 1 ELSE 2 END,
+            CASE WHEN int_surface IN ('unpaved') THEN 0 ELSE 2 END
+        ) AS roads_fill
+        ) AS _
+    properties:
+      minzoom: 10
+      cache-features: true
+    advanced: {}
+
+  - <<: *layer
+    # status: off
+    name: tunnels
+    id:   tunnels
+    geometry: "linestring"
+    Datasource:
+      <<: *postgis
+      geometry_field: way
+      # This query is quite large, having to deal with both roads, railways and
+      # runways. To allow for ways that are both railways and roads, a UNION
+      # ALL is present, and to use an ordering different than current osm2pgsql
+      # an order is generated in SQL.
+      table: |-
+        (SELECT
+          *,
+          GREATEST(0.5, COALESCE(_width, COALESCE(lanes, default_lane_count) * default_lane_width) / !pixel_width!) width
+        FROM
+        (SELECT
+            way,
+            (CASE WHEN substr(feature, length(feature)-3, 4) = 'link' THEN substr(feature, 0, length(feature)-4) ELSE feature END) AS feature,
+            horse,
+            foot,
+            bicycle,
+            tracktype,
+            int_surface,
+            access,
+            construction,
+            service,
+            link,
+            layernotnull,
+            -- TODO write a function that handles units (feet, inches)
+            to_number(lanes, 'FM99') lanes,
+            to_number(width, 'FM99') _width,
+            default_lane_count,
+            default_lane_width
+          FROM ( -- subselect that contains both roads and rail/aero
+            SELECT
+                way,
+                ('highway_' || highway) AS feature, --only motorway to tertiary links are accepted later on
+                horse,
+                foot,
+                bicycle,
+                tracktype,
+                CASE WHEN surface IN ('unpaved', 'compacted', 'dirt', 'earth', 'fine_gravel', 'grass', 'grass_paver', 'gravel', 'ground',
+                                      'mud', 'pebblestone', 'salt', 'sand', 'woodchips', 'clay') THEN 'unpaved'
+                  WHEN surface IN ('paved', 'asphalt', 'cobblestone', 'cobblestone:flattened', 'sett', 'concrete', 'concrete:lanes',
+                                      'concrete:plates', 'paving_stones', 'metal', 'wood') THEN 'paved'
+                  ELSE NULL
+                END AS int_surface,
+                CASE WHEN access IN ('destination') THEN 'destination'::text
+                  WHEN access IN ('no', 'private') THEN 'no'::text
+                  ELSE NULL
+                END AS access,
+                construction,
+                CASE
+                  WHEN service IN ('parking_aisle', 'drive-through', 'driveway') THEN 'INT-minor'::text
+                  ELSE 'INT-normal'::text
+                END AS service,
+                CASE
+                  WHEN substr(highway, length(highway)-3, 4) = 'link' THEN 'yes'
+                  ELSE 'no'
+                END AS link,
+                COALESCE(to_number(layer, 'FM99'), 0) layernotnull,
+                tags -> 'lanes' lanes,
+                tags -> 'width' width
+              FROM planet_osm_line
+              WHERE (tunnel = 'yes' OR tunnel = 'building_passage' OR covered = 'yes')
+                AND tags ? 'highway'
+                AND (zoom(!scale_denominator!) >= 13
+                  OR (zoom(!scale_denominator!) >= 12 AND tags -> 'highway' IN ('motorway', 'trunk', 'primary', 'secondary', 'tertiary')))
+                -- end of road select
+            UNION ALL
+            SELECT
+                way,
+                COALESCE(
+                  ('railway_' || (CASE WHEN railway = 'preserved' AND service IN ('spur', 'siding', 'yard') THEN 'INT-preserved-ssy'::text
+                                       WHEN (railway = 'rail' AND service IN ('spur', 'siding', 'yard')) THEN 'INT-spur-siding-yard'
+                                       WHEN (railway = 'tram' AND service IN ('spur', 'siding', 'yard')) THEN 'tram-service' ELSE railway END)),
+                  ('aeroway_' || aeroway)
+                ) AS feature,
+                horse,
+                foot,
+                bicycle,
+                tracktype,
+                'null',
+                CASE
+                  WHEN access IN ('destination') THEN 'destination'::text
+                  WHEN access IN ('no', 'private') THEN 'no'::text
+                  ELSE NULL
+                END AS access,
+                construction,
+                CASE WHEN service IN ('parking_aisle', 'drive-through', 'driveway') THEN 'INT-minor'::text ELSE 'INT-normal'::text END AS service,
+                'no' AS link,
+                COALESCE(to_number(layer, 'FM99'), 0) layernotnull,
+                tags -> 'lanes' lanes,
+                tags -> 'width' width
+              FROM planet_osm_line
+              WHERE (tunnel = 'yes' OR tunnel = 'building_passage' OR covered = 'yes')
+                AND tags ?| ARRAY['railway', 'aeroway']
+                AND (zoom(!scale_denominator!) >= 13
+                  OR (zoom(!scale_denominator!) >= 10 AND tags ? 'aeroway'))
+                -- end of rail/aero select
+            ) AS features
+          JOIN (VALUES -- this join is also putting a condition on what is selected. features not matching it do not make it into the results.
+              ('railway_rail', 440),
+              ('railway_INT-preserved-ssy', 430),
+              ('railway_INT-spur-siding-yard', 430),
+              ('railway_subway', 420),
+              ('railway_narrow_gauge', 420),
+              ('railway_light_rail', 420),
+              ('railway_preserved', 420),
+              ('railway_funicular', 420),
+              ('railway_monorail', 420),
+              ('railway_miniature', 420),
+              ('railway_turntable', 420),
+              ('railway_tram', 410),
+              ('railway_tram-service', 405),
+              ('railway_disused', 400),
+              ('railway_construction', 400),
+              ('highway_motorway', 380),
+              ('highway_trunk', 370),
+              ('highway_primary', 360),
+              ('highway_secondary', 350),
+              ('highway_tertiary', 340),
+              ('highway_residential', 330),
+              ('highway_unclassified', 330),
+              ('highway_road', 330),
+              ('highway_living_street', 320),
+              ('highway_pedestrian', 310),
+              ('highway_raceway', 300),
+              ('highway_motorway_link', 240),
+              ('highway_trunk_link', 230),
+              ('highway_primary_link', 220),
+              ('highway_secondary_link', 210),
+              ('highway_tertiary_link', 200),
+              ('highway_service', 150),
+              ('highway_track', 110),
+              ('highway_path', 100),
+              ('highway_footway', 100),
+              ('highway_bridleway', 100),
+              ('highway_cycleway', 100),
+              ('highway_steps', 100),
+              ('highway_platform', 90),
+              ('railway_platform', 90),
+              ('aeroway_runway', 60),
+              ('aeroway_taxiway', 50),
+              ('highway_construction', 10)
+            ) AS ordertable (feature, prio)
+            USING (feature)
+          JOIN (VALUES -- this join is also putting a condition on what is selected. features not matching it do not make it into the results.
+              ('railway_rail', 1, 6),
+              ('railway_INT-preserved-ssy', 1, 6),
+              ('railway_INT-spur-siding-yard', 1, 6),
+              ('railway_subway', 1, 4),
+              ('railway_narrow_gauge', 1, 6),
+              ('railway_light_rail', 1, 4),
+              ('railway_preserved', 1, 6),
+              ('railway_funicular', 1, 4),
+              ('railway_monorail', 1, 4),
+              ('railway_miniature', 1, 2),
+              ('railway_turntable', 1, 6),
+              ('railway_tram', 1, 4),
+              ('railway_tram-service', 1, 4),
+              ('railway_disused', 1, 6),
+              ('railway_construction', 1, 6),
+              ('highway_motorway', 2, 5),
+              ('highway_trunk', 2, 4.75),
+              ('highway_primary', 2, 4.5),
+              ('highway_secondary', 2, 4.25),
+              ('highway_tertiary', 2, 4),
+              ('highway_residential', 2, 3),
+              ('highway_unclassified', 2, 3),
+              ('highway_road', 2, 3),
+              ('highway_living_street', 2, 3),
+              ('highway_pedestrian', 1, 5),
+              ('highway_raceway', 6, 4.5),
+              ('highway_motorway_link', 1, 4.5),
+              ('highway_trunk_link', 1, 4.5),
+              ('highway_primary_link', 1, 4.5),
+              ('highway_secondary_link', 1, 4.5),
+              ('highway_tertiary_link', 1, 4),
+              ('highway_service', 1, 4),
+              ('highway_track', 1, 3),
+              ('highway_path', 1, 1.5),
+              ('highway_footway', 1, 1.5),
+              ('highway_bridleway', 1, 1.5),
+              ('highway_cycleway', 2, 2.5),
+              ('highway_steps', 1, 1.5),
+              ('highway_platform', 1, 6),
+              ('railway_platform', 1, 6),
+              ('aeroway_runway', 1, 80),
+              ('aeroway_taxiway', 1, 15),
+              ('highway_construction', 2, 4.5)
+            ) AS lanetable (feature, default_lane_count, default_lane_width)
+            USING (feature)
+          ORDER BY
+            layernotnull,
+            prio,
+            CASE WHEN access IN ('no', 'private') THEN 0 WHEN access IN ('destination') THEN 1 ELSE 2 END,
+            CASE WHEN int_surface IN ('unpaved') THEN 0 ELSE 2 END
+        ) AS tunnels
+        ) AS _
+    properties:
+      group-by: "layernotnull"
+      minzoom: 9
+    advanced: {}
+
+  - <<: *layer
+    # status: off
+    name: buildings_3d
+    id:   buildings_3d
+    properties:
+      minzoom: 16
+    Datasource:
+      <<: *postgis
+      geometry_field: way
+      table: >
+        (
+          SELECT
+            way,
+            tags -> 'building' building,
+            tags -> 'building:levels' levels
+          FROM planet_osm_polygon
+          WHERE way && !bbox!
+            AND tags ?| ARRAY['building', 'building:levels']
+            AND tags -> 'building' != 'no'
+          -- ORDER BY z_order, way_area DESC
+          ORDER BY (1 / ST_Y(ST_Centroid(way))) * ST_X(ST_Centroid(way)) DESC
+        ) AS _
+
+  - <<: *layer
+    # status: off
+    name: bridges
+    id:   bridges
+    geometry: "linestring"
+    Datasource:
+      <<: *postgis
+      table: |-
+        (SELECT
+          *,
+          GREATEST(0.5, COALESCE(_width, COALESCE(lanes, default_lane_count) * default_lane_width) / !pixel_width!) width
+        FROM
+        (SELECT
+            way,
+            (CASE WHEN substr(feature, length(feature)-3, 4) = 'link' THEN substr(feature, 0, length(feature)-4) ELSE feature END) AS feature,
+            horse,
+            foot,
+            bicycle,
+            tracktype,
+            int_surface,
+            access,
+            construction,
+            service,
+            link,
+            layernotnull,
+            prio,
+            -- TODO write a function that handles units (feet, inches)
+            to_number(lanes, 'FM99') lanes,
+            to_number(width, 'FM99') _width,
+            default_lane_count,
+            default_lane_width
+          FROM ( -- subselect that contains both roads and rail/aero
+            SELECT
+                way,
+                ('highway_' || highway) AS feature, --only motorway to tertiary links are accepted later on
+                horse,
+                foot,
+                bicycle,
+                tracktype,
+                CASE WHEN surface IN ('unpaved', 'compacted', 'dirt', 'earth', 'fine_gravel', 'grass', 'grass_paver', 'gravel', 'ground',
+                                      'mud', 'pebblestone', 'salt', 'sand', 'woodchips', 'clay') THEN 'unpaved'
+                  WHEN surface IN ('paved', 'asphalt', 'cobblestone', 'cobblestone:flattened', 'sett', 'concrete', 'concrete:lanes',
+                                      'concrete:plates', 'paving_stones', 'metal', 'wood') THEN 'paved'
+                  ELSE NULL
+                END AS int_surface,
+                CASE WHEN access IN ('destination') THEN 'destination'::text
+                  WHEN access IN ('no', 'private') THEN 'no'::text
+                  ELSE NULL
+                END AS access,
+                construction,
+                CASE
+                  WHEN service IN ('parking_aisle', 'drive-through', 'driveway') THEN 'INT-minor'::text
+                  ELSE 'INT-normal'::text
+                END AS service,
+                CASE
+                  WHEN substr(highway, length(highway)-3, 4) = 'link' THEN 'yes'
+                  ELSE 'no'
+                END AS link,
+                COALESCE(to_number(layer, 'FM99'), 0) layernotnull,
+                tags -> 'lanes' lanes,
+                tags -> 'width' width
+              FROM planet_osm_line
+              WHERE bridge IN ('yes', 'boardwalk', 'cantilever', 'covered', 'low_water_crossing', 'movable', 'trestle', 'viaduct')
+                AND tags ? 'highway'
+                AND (zoom(!scale_denominator!) >= 13
+                  OR (zoom(!scale_denominator!) >= 12 AND tags -> 'highway' IN ('motorway', 'trunk', 'primary', 'secondary', 'tertiary')))
+                -- end of road select
+            UNION ALL
+            SELECT
+                way,
+                COALESCE(
+                  ('railway_' || (CASE WHEN railway = 'preserved' AND service IN ('spur', 'siding', 'yard') THEN 'INT-preserved-ssy'::text
+                                       WHEN (railway = 'rail' AND service IN ('spur', 'siding', 'yard')) THEN 'INT-spur-siding-yard'
+                                       WHEN (railway = 'tram' AND service IN ('spur', 'siding', 'yard')) THEN 'tram-service' ELSE railway END)),
+                  ('aeroway_' || aeroway)
+                ) AS feature,
+                horse,
+                foot,
+                bicycle,
+                tracktype,
+                'null',
+                CASE
+                  WHEN access IN ('destination') THEN 'destination'::text
+                  WHEN access IN ('no', 'private') THEN 'no'::text
+                  ELSE NULL
+                END AS access,
+                construction,
+                CASE WHEN service IN ('parking_aisle', 'drive-through', 'driveway') THEN 'INT-minor'::text ELSE 'INT-normal'::text END AS service,
+                'no' AS link,
+                COALESCE(to_number(layer, 'FM99'), 0) layernotnull,
+                tags -> 'lanes' lanes,
+                tags -> 'width' width
+              FROM planet_osm_line
+              WHERE bridge IN ('yes', 'boardwalk', 'cantilever', 'covered', 'low_water_crossing', 'movable', 'trestle', 'viaduct')
+                AND tags ?| ARRAY['railway', 'aeroway']
+                AND (zoom(!scale_denominator!) >= 13
+                  OR (zoom(!scale_denominator!) >= 10 AND tags ? 'aeroway'))
+                -- end of rail/aero select
+            ) AS features
+          JOIN (VALUES -- this join is also putting a condition on what is selected. features not matching it do not make it into the results.
+              ('railway_rail', 440),
+              ('railway_INT-preserved-ssy', 430),
+              ('railway_INT-spur-siding-yard', 430),
+              ('railway_subway', 420),
+              ('railway_narrow_gauge', 420),
+              ('railway_light_rail', 420),
+              ('railway_preserved', 420),
+              ('railway_funicular', 420),
+              ('railway_monorail', 420),
+              ('railway_miniature', 420),
+              ('railway_turntable', 420),
+              ('railway_tram', 410),
+              ('railway_tram-service', 405),
+              ('railway_disused', 400),
+              ('railway_construction', 400),
+              ('highway_motorway', 380),
+              ('highway_trunk', 370),
+              ('highway_primary', 360),
+              ('highway_secondary', 350),
+              ('highway_tertiary', 340),
+              ('highway_residential', 330),
+              ('highway_unclassified', 330),
+              ('highway_road', 330),
+              ('highway_living_street', 320),
+              ('highway_pedestrian', 310),
+              ('highway_raceway', 300),
+              ('highway_motorway_link', 240),
+              ('highway_trunk_link', 230),
+              ('highway_primary_link', 220),
+              ('highway_secondary_link', 210),
+              ('highway_tertiary_link', 200),
+              ('highway_service', 150),
+              ('highway_track', 110),
+              ('highway_path', 100),
+              ('highway_footway', 100),
+              ('highway_bridleway', 100),
+              ('highway_cycleway', 100),
+              ('highway_steps', 100),
+              ('highway_platform', 90),
+              ('railway_platform', 90),
+              ('aeroway_runway', 60),
+              ('aeroway_taxiway', 50),
+              ('highway_construction', 10)
+            ) AS ordertable (feature, prio)
+            USING (feature)
+          JOIN (VALUES -- this join is also putting a condition on what is selected. features not matching it do not make it into the results.
+              ('railway_rail', 1, 6),
+              ('railway_INT-preserved-ssy', 1, 6),
+              ('railway_INT-spur-siding-yard', 1, 6),
+              ('railway_subway', 1, 4),
+              ('railway_narrow_gauge', 1, 6),
+              ('railway_light_rail', 1, 4),
+              ('railway_preserved', 1, 6),
+              ('railway_funicular', 1, 4),
+              ('railway_monorail', 1, 4),
+              ('railway_miniature', 1, 2),
+              ('railway_turntable', 1, 6),
+              ('railway_tram', 1, 4),
+              ('railway_tram-service', 1, 4),
+              ('railway_disused', 1, 6),
+              ('railway_construction', 1, 6),
+              ('highway_motorway', 2, 5),
+              ('highway_trunk', 2, 4.75),
+              ('highway_primary', 2, 4.5),
+              ('highway_secondary', 2, 4.25),
+              ('highway_tertiary', 2, 4),
+              ('highway_residential', 2, 3),
+              ('highway_unclassified', 2, 3),
+              ('highway_road', 2, 3),
+              ('highway_living_street', 2, 3),
+              ('highway_pedestrian', 1, 5),
+              ('highway_raceway', 6, 4.5),
+              ('highway_motorway_link', 1, 4.5),
+              ('highway_trunk_link', 1, 4.5),
+              ('highway_primary_link', 1, 4.5),
+              ('highway_secondary_link', 1, 4.5),
+              ('highway_tertiary_link', 1, 4),
+              ('highway_service', 1, 4),
+              ('highway_track', 1, 3),
+              ('highway_path', 1, 1.5),
+              ('highway_footway', 1, 1.5),
+              ('highway_bridleway', 1, 1.5),
+              ('highway_cycleway', 2, 2.5),
+              ('highway_steps', 1, 1.5),
+              ('highway_platform', 1, 6),
+              ('railway_platform', 1, 6),
+              ('aeroway_runway', 1, 80),
+              ('aeroway_taxiway', 1, 15),
+              ('highway_construction', 2, 4.5)
+            ) AS lanetable (feature, default_lane_count, default_lane_width)
+            USING (feature)
+          ORDER BY
+            layernotnull,
+            prio,
+            CASE WHEN access IN ('no', 'private') THEN 0 WHEN access IN ('destination') THEN 1 ELSE 2 END,
+            CASE WHEN int_surface IN ('unpaved') THEN 0 ELSE 2 END
+        ) AS bridges
+        ) AS _
+    properties:
+      group-by: "layernotnull"
+      minzoom: 9
+      cache-features: true
+    advanced: {}
+
+  - <<: *layer
+    status: off
+    name: routes
+    id:   routes
+    Datasource:
+      <<: *postgis
+      geometry_field: way
+      table: >
+        (
+          SELECT
+            way,
+            tags -> 'route' route
+          FROM planet_osm_line
+          WHERE way && !bbox!
+            AND tags ? 'route'
+        ) AS _
+
+  - <<: *layer
+    status: off
+    name: utilities
+    id:   utilities
+    Datasource:
+      <<: *postgis
+      geometry_field: way
+      table: >
+        (
+          SELECT
+            way,
+            tags -> 'power' power
+          FROM planet_osm_polygon
+          WHERE way && !bbox!
+            AND tags ? 'power'
+        UNION ALL
+          SELECT
+            way,
+            tags -> 'power' power
+          FROM planet_osm_line
+          WHERE way && !bbox!
+            AND tags ? 'power'
+        ) AS _
+
+
+## OLD ###
+
+  - <<: *layer
+    status: off
     name: ne_10m_lakes
     id:   ne_10m_lakes
     properties:
+      "buffer-size": 0
       minzoom: 5
       maxzoom: 8
     Datasource:
@@ -81,10 +934,12 @@ Layer:
       encoding: "ISO-8859-1"
 
   - <<: *layer
+    status: off
     name: ne_10m_admin_0_boundary_lines_land
     id:   ne_10m_admin_0_boundary_lines_land
     class: country-boundary-10m
     properties:
+      "buffer-size": 0
       minzoom: 2
       maxzoom: 9
     Datasource:
@@ -93,9 +948,11 @@ Layer:
       table: ne_10m_admin_0_boundary_lines_land
 
   - <<: *layer
+    status: off
     name: ne_10m_admin_1_states_provinces_lines
     id:   ne_10m_admin_1_states_provinces_lines
     properties:
+      "buffer-size": 0
       minzoom: 2
       maxzoom: 9
     Datasource:
@@ -104,9 +961,11 @@ Layer:
       table: ne_10m_admin_1_states_provinces_lines
 
   - <<: *layer
+    status: off
     name: ne-roads
     id:   ne-roads
     properties:
+      "buffer-size": 0
       minzoom: 5
       maxzoom: 8
       cache-features: on
@@ -116,6 +975,7 @@ Layer:
       table: ne_10m_roads
 
   - <<: *layer
+    status: off
     name: landuse
     id:   landuse
     geometry: "polygon"
@@ -155,10 +1015,12 @@ Layer:
             OR "natural" IS NOT NULL)
         ) AS _
   - <<: *layer
+    status: off
     name: site
     id:   site
     geometry: "point"
     properties:
+      "buffer-size": 0
       minzoom: 12
     Datasource:
       <<: *postgis
@@ -186,10 +1048,12 @@ Layer:
             OR tags->'hazard' = 'landslide')
         ) AS _
   - <<: *layer
+    status: off
     name: site_poly
     id:   site_poly
     geometry: "polygon"
     properties:
+      "buffer-size": 0
       minzoom: 12
     Datasource:
       <<: *postgis
@@ -220,6 +1084,7 @@ Layer:
             OR tags->'hazard' = 'landslide')
         ) AS _
   - <<: *layer
+    status: off
     name: waterway
     id:   waterway
     geometry: "linestring"
@@ -237,6 +1102,7 @@ Layer:
           AND waterway IS NOT NULL
         ) AS _
   - <<: *layer
+    status: off
     name: water
     id:   water
     geometry: "polygon"
@@ -260,6 +1126,7 @@ Layer:
           OR "natural" = 'water'
         ) AS _
   - <<: *layer
+    status: off
     name: coastline_water
     id:   coastline_water
     geometry: "polygon"
@@ -267,6 +1134,7 @@ Layer:
       <<: *shapefile
       file: shp/water_polygons.shp
   - <<: *layer
+    status: off
     name: water_features
     id:   water_features
     geometry: "polygon"
@@ -290,10 +1158,12 @@ Layer:
           AND man_made IN ('pier', 'breakwater', 'groyne')
         ) AS _
   - <<: *layer
+    status: off
     name: water_barriers
     id:   water_barriers
     geometry: "polygon"
     properties:
+      "buffer-size": 0
       minzoom: 10
     Datasource:
       <<: *postgis
@@ -317,6 +1187,7 @@ Layer:
           AND waterway IN ('dam', 'weir', 'lock_gate')
         ) AS _
   - <<: *layer
+    status: off
     name: barrier_line
     id:   barrier_line
     geometry: "linestring"
@@ -336,6 +1207,7 @@ Layer:
           OR barrier IN ('hedge', 'fence', 'gate','wall'))
         ) AS _
   - <<: *layer
+    status: off
     name: aeroway
     id:   aeroway
     geometry: "polygon"
@@ -368,10 +1240,12 @@ Layer:
             WHEN type = 'helipad' THEN 5
           END ASC
   - <<: *layer
+    status: off
     name: road_area
     id:   road_area
     geometry: "polygon"
     properties:
+      "buffer-size": 0
       minzoom: 10
     Datasource:
       <<: *postgis
@@ -387,9 +1261,11 @@ Layer:
           AND highway IN ('pedestrian','footway','service','residential')
         ) AS _
   - <<: *layer
+    status: off
     name: building
     id:   building
     properties:
+      "buffer-size": 0
       minzoom: 12
     geometry: "polygon"
     Datasource:
@@ -408,9 +1284,11 @@ Layer:
           OR aeroway IN ('terminal','hangar'))
         ) AS _
   - <<: *layer
+    status: off
     name: building_condition
     id:   building_condition
     properties:
+      "buffer-size": 0
       minzoom: 12
     geometry: "polygon"
     Datasource:
@@ -433,10 +1311,12 @@ Layer:
             OR tags->'damage' IN ('moderate','extensive','severe','total','destroyed','collapsed','collapse','partially_collapsed','flooded'))
         ) AS _
   - <<: *layer
+    status: off
     name: landuse_overlay
     id:   landuse_overlay
     geometry: "polygon"
     properties:
+      "buffer-size": 0
       minzoom: 10
     Datasource:
       <<: *postgis
@@ -455,10 +1335,12 @@ Layer:
           OR wetland IN ('wetland','marsh','swamp','bog','mud','tidalflat'))
         ) AS _
   - <<: *layer
+    status: off
     name: tunnel
     id:   tunnel
     geometry: "linestring"
     properties:
+      "buffer-size": 0
       minzoom: 8
     Datasource:
       <<: *postgis
@@ -476,10 +1358,12 @@ Layer:
           AND highway IN ('motorway','motorway_link','trunk','trunk_link','primary','primary_link','secondary','secondary_link','tertiary','tertiary_link','road','path','track','service','footway','bridleway','cycleway','steps','pedestrian','living_street','unclassified','residential','raceway')
         ) AS _
   - <<: *layer
+    status: off
     name: road
     id:   road
     geometry: "linestring"
     properties:
+      "buffer-size": 0
       minzoom: 8
     Datasource:
       <<: *postgis
@@ -531,10 +1415,12 @@ Layer:
             prio
         ) AS _
   - <<: *layer
+    status: off
     name: railway
     id:   railway
     geometry: "linestring"
     properties:
+      "buffer-size": 0
       minzoom: 8
     Datasource:
       <<: *postgis
@@ -552,10 +1438,12 @@ Layer:
           AND railway IS NOT NULL
         ) AS _
   - <<: *layer
+    status: off
     name: bridge
     id:   bridge
     geometry: "linestring"
     properties:
+      "buffer-size": 0
       minzoom: 8
     Datasource:
       <<: *postgis
@@ -573,10 +1461,12 @@ Layer:
           AND highway IN ('motorway','motorway_link','trunk','trunk_link','primary','primary_link','secondary','secondary_link','tertiary','tertiary_link','road','path','track','service','footway','bridleway','cycleway','steps','pedestrian','living_street','unclassified','residential','raceway')
         ) AS _
   - <<: *layer
+    status: off
     name: road_condition
     id:   road_condition
     geometry: "linestring"
     properties:
+      "buffer-size": 0
       minzoom: 12
     Datasource:
       <<: *postgis
@@ -596,9 +1486,11 @@ Layer:
             OR military = 'checkpoint')
         ) AS _
   - <<: *layer
+    status: off
     name: building_outline
     id:   building_outline
     properties:
+      "buffer-size": 0
       minzoom: 12
     geometry: "polygon"
     Datasource:
@@ -618,10 +1510,12 @@ Layer:
           OR aeroway IN ('terminal','hangar'))
         ) AS _
   - <<: *layer
+    status: off
     name: sanitation
     id:   sanitation
     geometry: "point"
     properties:
+      "buffer-size": 0
       minzoom: 12
     Datasource:
       <<: *postgis
@@ -644,10 +1538,12 @@ Layer:
             OR tags->'informal' = 'dumpsite')
         ) AS _
   - <<: *layer
+    status: off
     name: sanitation_poly
     id:   sanitation_poly
     geometry: "polygon"
     properties:
+      "buffer-size": 0
       minzoom: 12
     Datasource:
       <<: *postgis
@@ -670,10 +1566,12 @@ Layer:
             OR tags->'informal' = 'dumpsite')
         ) AS _
   - <<: *layer
+    status: off
     name: water_source
     id:   water_source
     geometry: "point"
     properties:
+      "buffer-size": 0
       minzoom: 10
     Datasource:
       <<: *postgis
@@ -704,10 +1602,12 @@ Layer:
             OR amenity = 'drinking_water')
         ) AS _
   - <<: *layer
+    status: off
     name: water_source_poly
     id:   water_source_poly
     geometry: "polygon"
     properties:
+      "buffer-size": 0
       minzoom: 10
     Datasource:
       <<: *postgis
@@ -738,10 +1638,12 @@ Layer:
             OR amenity = 'drinking_water')
         ) AS _
   - <<: *layer
+    status: off
     name: emergency
     id:   emergency
     geometry: "point"
     properties:
+      "buffer-size": 0
       minzoom: 10
     Datasource:
       <<: *postgis
@@ -770,10 +1672,12 @@ Layer:
             OR aeroway = 'helipad')
         ) AS _
   - <<: *layer
+    status: off
     name: emergency_poly
     id:   emergency_poly
     geometry: "polygon"
     properties:
+      "buffer-size": 0
       minzoom: 10
     Datasource:
       <<: *postgis
@@ -803,10 +1707,12 @@ Layer:
             OR aeroway = 'helipad')
         ) AS _
   - <<: *layer
+    status: off
     name: medical
     id:   medical
     geometry: "point"
     properties:
+      "buffer-size": 0
       minzoom: 10
     Datasource:
       <<: *postgis
@@ -831,10 +1737,12 @@ Layer:
             OR tags->'health_facility:type' IN ('field_hospital', 'dispensary'))
         ) AS _
   - <<: *layer
+    status: off
     name: medical_poly
     id:   medical_poly
     geometry: "polygon"
     properties:
+      "buffer-size": 0
       minzoom: 10
     Datasource:
       <<: *postgis
@@ -859,10 +1767,12 @@ Layer:
             OR tags->'health_facility:type' IN ('field_hospital', 'dispensary'))
         ) AS _
   - <<: *layer
+    status: off
     name: communication
     id:   communication
     geometry: "point"
     properties:
+      "buffer-size": 0
       minzoom: 12
     Datasource:
       <<: *postgis
@@ -885,10 +1795,12 @@ Layer:
             OR tags->'board_type' = 'notice')
         ) AS _
   - <<: *layer
+    status: off
     name: electric_utility
     id:   electric_utility
     geometry: "point"
     properties:
+      "buffer-size": 0
       minzoom: 12
     Datasource:
       <<: *postgis
@@ -913,10 +1825,12 @@ Layer:
             AND power IN ('generator','tower','pole','line','minor_line','station','substation','sub_station','transformer')
         ) AS _
   - <<: *layer
+    status: off
     name: electric_utility_line
     id:   electric_utility_line
     geometry: "linestring"
     properties:
+      "buffer-size": 0
       minzoom: 12
     Datasource:
       <<: *postgis
@@ -941,10 +1855,12 @@ Layer:
             AND power IN ('generator','tower','pole','line','minor_line','station','substation','sub_station','transformer')
         ) AS _
   - <<: *layer
+    status: off
     name: electric_utility_poly
     id:   electric_utility_poly
     geometry: "polygon"
     properties:
+      "buffer-size": 0
       minzoom: 12
     Datasource:
       <<: *postgis
@@ -968,8 +1884,10 @@ Layer:
           WHERE way && !bbox!
             AND power IN ('generator','tower','pole','line','minor_line','station','substation','sub_station','transformer')
         ) AS _
-  - id: admin
+  - <<: *layer
+    status: off
     name: admin
+    id: admin
     geometry: "linestring"
     Datasource:
       <<: *postgis
@@ -977,20 +1895,22 @@ Layer:
       table: >
         (SELECT
             way,
-            admin_level::integer as admin_level
+            to_number(admin_level, 'FM99') as admin_level
           FROM planet_osm_line
           WHERE boundary = 'administrative'
             AND admin_level IN ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10')
-          ORDER BY admin_level::integer DESC -- With 10 as a valid value, we need to do a numeric ordering, not a text ordering
+          ORDER BY to_number(admin_level, 'FM99') DESC -- With 10 as a valid value, we need to do a numeric ordering, not a text ordering
         ) AS _
 #  - country_label_line
 
 # Having issues with admin_0_label_points, so use this instead
 #  - country_label
   - <<: *layer
+    status: off
     name: ne_10m_admin_0_countries_lakes
     id:   ne_10m_admin_0_countries_lakes
     properties:
+      "buffer-size": 0
       minzoom: 2
       maxzoom: 9
     Datasource:
@@ -1000,9 +1920,11 @@ Layer:
 
 #  - state_label
   - <<: *layer
+    status: off
     name: ne_10m_admin_1_label_points
     id:   ne_10m_admin_1_label_points
     properties:
+      "buffer-size": 0
       minzoom: 2
       maxzoom: 9
     Datasource:
@@ -1012,9 +1934,11 @@ Layer:
 
 #  - marine_label
   - <<: *layer
+    status: off
     name: ne_10m_rivers_lake_centerlines_scale_rank_labels
     id:   ne_10m_rivers_lake_centerlines_scale_rank_labels
     properties:
+      "buffer-size": 0
       minzoom: 4
       maxzoom: 8
     Datasource:
@@ -1025,9 +1949,11 @@ Layer:
 
 
   - <<: *layer
+    status: off
     id: place_label
     name: place_label
     properties:
+      "buffer-size": 0
       minzoom: 8
     geometry: "point"
     Datasource:
@@ -1060,9 +1986,11 @@ Layer:
 
 #  - water_label
   - <<: *layer
+    status: off
     id: poi_label
     name: poi_label
     properties:
+      "buffer-size": 0
       minzoom: 8
     geometry: "point"
     Datasource:
@@ -1166,10 +2094,12 @@ Layer:
           WHERE way && !bbox!
         ) AS poi_label
   - <<: *layer
+    status: off
     id: road_label
     name: road_label
     geometry: "linestring"
     properties:
+      "buffer-size": 0
       minzoom: 12
     Datasource:
       <<: *postgis
@@ -1184,11 +2114,13 @@ Layer:
             AND name IS NOT NULL
         ) AS data
   - <<: *layer
+    status: off
     id: roads-text-ref
     name: roads-text-ref
     class: ""
     geometry: "linestring"
     properties:
+      "buffer-size": 0
       minzoom: 10
     Datasource:
       <<: *postgis
@@ -1229,10 +2161,12 @@ Layer:
        WHERE height <= 4 AND width <= 10) as roads_text_ref
 #  - waterway_label
   - <<: *layer
+    status: off
     id: housenum_label
     name: housenum_label
     geometry: "point"
     properties:
+      "buffer-size": 0
       minzoom: 18
     Datasource:
       <<: *postgis
