@@ -116,6 +116,7 @@ db/water_polygons: | db/postgis data/water_polygons.zip
 			-t_srs EPSG:3857 \
 			-lco ENCODING=UTF-8 \
 			-nlt PROMOTE_TO_MULTI \
+			-lco DROP_TABLE=OFF \
 			-lco POSTGIS_VERSION=2.0 \
 			-lco GEOMETRY_NAME=geom \
 			-lco SRID=3857 \
@@ -149,6 +150,7 @@ db/$(strip $(word 1, $(subst :, ,$(1)))): | $(strip $(word 2, $(subst :, ,$(1)))
 			--config PG_USE_COPY YES \
 			-nln $$(basename $$(notdir $$(word 1, $$|))) \
 			-t_srs EPSG:3857 \
+			-lco DROP_TABLE=OFF \
 			-lco ENCODING=UTF-8 \
 			-nlt PROMOTE_TO_MULTI \
 			-lco POSTGIS_VERSION=2.0 \
