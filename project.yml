@@ -66,18 +66,15 @@ Layer:
         (
           SELECT
             way,
-            tags -> 'natural' "natural"
+            tags -> 'amenity' amenity,
+            tags -> 'landuse' landuse,
+            tags -> 'leisure' leisure,
+            tags -> 'natural' "natural",
+            tags -> 'wetland' wetland
           FROM planet_osm_polygon
           WHERE way && !bbox!
             AND tags ? 'natural'
             AND way_area > 0.01 * !pixel_width!::real * !pixel_height!::real
-        UNION ALL
-          SELECT
-            way,
-            tags -> 'natural' "natural"
-          FROM planet_osm_line
-          WHERE way && !bbox!
-            AND tags ? 'natural'
         ) AS _
 
   - <<: *layer
@@ -85,6 +82,7 @@ Layer:
     name: landuse
     id:   landuse
     properties:
+      cache-features: true
       minzoom: 12
     Datasource:
       <<: *postgis
@@ -93,11 +91,14 @@ Layer:
         (
           SELECT
             way,
+            tags -> 'amenity' amenity,
             tags -> 'landuse' landuse,
-            tags -> 'leisure' leisure
+            tags -> 'leisure' leisure,
+            tags -> 'natural' "natural",
+            tags -> 'wetland' wetland
           FROM planet_osm_polygon
           WHERE way && !bbox!
-            AND tags ?| ARRAY['landuse', 'leisure']
+            AND tags ?| ARRAY['amenity', 'landuse', 'leisure', 'wetland']
             AND way_area > 0.01 * !pixel_width!::real * !pixel_height!::real
             AND (zoom(!scale_denominator!) >= 13
               OR (zoom(!scale_denominator!) >= 12 AND way_area > 16 * !pixel_width!::real * !pixel_height!::real))
@@ -117,7 +118,8 @@ Layer:
             null landuse,
             'coastline' "natural",
             null water,
-            null waterway
+            null waterway,
+            null man_made
           FROM water_polygons
           WHERE geom && !bbox!
         UNION ALL
@@ -126,34 +128,41 @@ Layer:
             tags -> 'landuse' landuse,
             tags -> 'natural' "natural",
             tags -> 'water' water,
-            tags -> 'waterway' waterway
+            tags -> 'waterway' waterway,
+            tags -> 'man_made' man_made
           FROM planet_osm_polygon
           WHERE way && !bbox!
-            AND tags ?| ARRAY['landuse', 'natural', 'water', 'waterway']
-            AND (tags ? 'water' OR tags ? 'waterway' OR tags -> 'landuse' IN ('reservoir', 'pond') OR tags -> 'natural' IN ('water'))
+            AND tags ?| ARRAY['landuse', 'man_made', 'natural', 'water', 'waterway']
+            AND (tags ? 'water' OR tags ? 'waterway' OR tags -> 'landuse' IN ('reservoir', 'pond') OR tags -> 'natural' IN ('water') OR tags -> 'man_made' IN ('pier', 'breakwater', 'groyne'))
             AND way_area > 0.01 * !pixel_width!::real * !pixel_height!::real
         UNION ALL
+          -- #waterway
           SELECT
             way,
             tags -> 'landuse' landuse,
             tags -> 'natural' "natural",
             tags -> 'water' water,
-            tags -> 'waterway' waterway
+            tags -> 'waterway' waterway,
+            tags -> 'man_made' man_made
           FROM planet_osm_line
           WHERE way && !bbox!
-            AND tags ?| ARRAY['natural', 'water', 'waterway']
-            AND (tags ? 'water' OR tags ? 'waterway' OR tags -> 'natural' IN ('pond'))
+            AND zoom(!scale_denominator!) >= 8
+            AND tags ?| ARRAY['man_made', 'natural', 'water', 'waterway']
+            AND (tags ? 'water' OR tags ? 'waterway' OR tags -> 'natural' IN ('pond') OR tags -> 'man_made' IN ('pier', 'breakwater', 'groyne'))
         UNION ALL
+          -- #ne_10m_rivers_lake_centerlines_scale_rank
           SELECT
             geom way,
             null landuse,
             'water' "natural",
             'river' water,
-            'river' waterway
+            'river' waterway,
+            null man_made
           FROM ne_10m_rivers_lake_centerlines_scale_rank
           WHERE geom && !bbox!
+            AND zoom(!scale_denominator!) BETWEEN 4 AND 7
             AND featurecla = 'River'
-            AND zoom(!scale_denominator!) BETWEEN 4 AND 8
+            AND scalerank < zoom(!scale_denominator!)
         ) AS _
 
   - <<: *layer
@@ -178,7 +187,7 @@ Layer:
         ) AS _
 
   - <<: *layer
-    # status: off
+    status: off
     name: man-made
     id:   man-made
     Datasource:
@@ -207,6 +216,7 @@ Layer:
     name: buildings
     id:   buildings
     properties:
+      cache-features: true
       minzoom: 12
     Datasource:
       <<: *postgis
@@ -219,11 +229,12 @@ Layer:
             tags -> 'building:levels' levels
           FROM planet_osm_polygon
           WHERE way && !bbox!
-            AND tags ? 'building'
-            AND tags -> 'building' != 'no'
+            AND tags ?| ARRAY['aeroway', 'building']
+            AND ((tags ? 'building' AND tags -> 'building' != 'no')
+              OR (tags ? 'aeroway') AND tags -> 'aeroway' IN ('terminal', 'hangar'))
             AND way_area > 0.01 * !pixel_width!::real * !pixel_height!::real
             AND (zoom(!scale_denominator!) >= 15
-              OR way_area > 16 * !pixel_width!::real * !pixel_height!::real)
+              OR way_area > 4 * !pixel_width!::real * !pixel_height!::real)
           ORDER BY z_order, way_area DESC
         ) AS _
 
@@ -242,7 +253,7 @@ Layer:
       table: |-
         (SELECT
           *,
-          GREATEST(0.5, COALESCE(_width, COALESCE(lanes, default_lane_count) * default_lane_width) / !pixel_width!) width
+          GREATEST(0.5, GREATEST(_width, COALESCE(lanes, default_lane_count) * default_lane_width) / !pixel_width!) width
         FROM
         (SELECT
             way,
@@ -259,8 +270,8 @@ Layer:
             layernotnull,
             prio,
             -- TODO write a function that handles units (feet, inches)
-            to_number(lanes, 'FM99') lanes,
-            to_number(width, 'FM99') _width,
+            to_number(0 || lanes, 'FM9999.9') lanes,
+            to_number(0 || width, 'FM9999.9') _width,
             default_lane_count,
             default_lane_width
           FROM ( -- begin "features" subselect that contains both roads and rail/aero
@@ -437,8 +448,8 @@ Layer:
         ) AS roads_fill
         ) AS _
     properties:
-      minzoom: 10
       cache-features: true
+      minzoom: 10
     advanced: {}
 
   - <<: *layer
@@ -456,7 +467,7 @@ Layer:
       table: |-
         (SELECT
           *,
-          GREATEST(0.5, COALESCE(_width, COALESCE(lanes, default_lane_count) * default_lane_width) / !pixel_width!) width
+          GREATEST(0.5, GREATEST(_width, COALESCE(lanes, default_lane_count) * default_lane_width) / !pixel_width!) width
         FROM
         (SELECT
             way,
@@ -471,9 +482,10 @@ Layer:
             service,
             link,
             layernotnull,
+            prio,
             -- TODO write a function that handles units (feet, inches)
-            to_number(lanes, 'FM99') lanes,
-            to_number(width, 'FM99') _width,
+            to_number(0 || lanes, 'FM9999.9') lanes,
+            to_number(0 || width, 'FM9999.9') _width,
             default_lane_count,
             default_lane_width
           FROM ( -- subselect that contains both roads and rail/aero
@@ -644,12 +656,13 @@ Layer:
         ) AS tunnels
         ) AS _
     properties:
+      cache-features: true
       group-by: "layernotnull"
       minzoom: 9
     advanced: {}
 
   - <<: *layer
-    # status: off
+    status: off
     name: buildings_3d
     id:   buildings_3d
     properties:
@@ -681,7 +694,7 @@ Layer:
       table: |-
         (SELECT
           *,
-          GREATEST(0.5, COALESCE(_width, COALESCE(lanes, default_lane_count) * default_lane_width) / !pixel_width!) width
+          1.05 * GREATEST(0.5, GREATEST(_width, COALESCE(lanes, default_lane_count) * default_lane_width) / !pixel_width!) width
         FROM
         (SELECT
             way,
@@ -698,8 +711,8 @@ Layer:
             layernotnull,
             prio,
             -- TODO write a function that handles units (feet, inches)
-            to_number(lanes, 'FM99') lanes,
-            to_number(width, 'FM99') _width,
+            to_number(0 || lanes, 'FM9999.9') lanes,
+            to_number(0 || width, 'FM9999.9') _width,
             default_lane_count,
             default_lane_width
           FROM ( -- subselect that contains both roads and rail/aero
@@ -976,46 +989,6 @@ Layer:
 
   - <<: *layer
     status: off
-    name: landuse
-    id:   landuse
-    geometry: "polygon"
-    Datasource:
-      <<: *postgis
-      geometry_field: way
-      table: >
-        (
-          SELECT
-            way,
-            name,
-            CASE WHEN leisure = 'common' OR landuse = 'village_green' THEN 'common'
-                 WHEN leisure IN ('park','nature_reserve') THEN 'park'
-                 WHEN leisure = 'garden' THEN 'garden'
-                 WHEN leisure = 'pitch' THEN 'pitch'
-                 WHEN leisure IN ('playground','recreation_ground') THEN 'playground'
-                 WHEN leisure = 'stadium' THEN 'stadium'
-                 WHEN amenity = 'parking' THEN 'parking'
-                 WHEN landuse = 'cemetery' THEN 'cemetery'
-                 WHEN landuse = 'allotments' THEN 'garden'
-                 WHEN landuse = 'industrial' THEN 'industrial'
-                 WHEN landuse = 'military' OR (military IS NOT NULL) THEN 'military'
-                 WHEN landuse IN ('farmland','farm','farmyard','orchard','aquaculture') THEN 'agriculture'
-                 WHEN landuse = 'forest' OR "natural" = 'wood' THEN 'wood'
-                 WHEN landuse IN ('grass','greenfield','meadow') OR "natural" IN ('grass','grassland') THEN 'grass'
-                 WHEN "natural" IN ('rock','bare_rock') THEN 'rock'
-                 WHEN "natural" = 'sand' THEN 'sand'
-                 WHEN "natural" = 'glacier' THEN 'glacier'
-                 WHEN "natural" = 'scrub' THEN 'scrub'
-                 ELSE '' END as class
-          FROM planet_osm_polygon
-          WHERE way && !bbox!
-            AND (landuse IS NOT NULL
-            OR  leisure IS NOT NULL
-            OR  amenity = 'parking'
-            OR  military IS NOT NULL
-            OR "natural" IS NOT NULL)
-        ) AS _
-  - <<: *layer
-    status: off
     name: site
     id:   site
     geometry: "point"
@@ -1082,80 +1055,6 @@ Layer:
             OR tags->'idp:camp_site' = 'spontaneous_camp'
             OR tags->'hazard_type' = 'landslide'
             OR tags->'hazard' = 'landslide')
-        ) AS _
-  - <<: *layer
-    status: off
-    name: waterway
-    id:   waterway
-    geometry: "linestring"
-    Datasource:
-      <<: *postgis
-      geometry_field: way
-      table: >
-        (
-          SELECT
-            way,
-            name,
-            waterway AS class
-          FROM planet_osm_line
-          WHERE way && !bbox!
-          AND waterway IS NOT NULL
-        ) AS _
-  - <<: *layer
-    status: off
-    name: water
-    id:   water
-    geometry: "polygon"
-    Datasource:
-      <<: *postgis
-      geometry_field: way
-      table: >
-        (
-          SELECT
-            way,
-            name,
-            CASE WHEN water IS NOT NULL THEN water
-                 WHEN landuse = 'reservoir' THEN 'reservoir'
-                 WHEN waterway = 'riverbank' THEN 'riverbank'
-                 ELSE 'water' END as class
-          FROM planet_osm_polygon
-          WHERE way && !bbox!
-          AND water IS NOT NULL
-          OR landuse = 'reservoir'
-          OR waterway = 'riverbank'
-          OR "natural" = 'water'
-        ) AS _
-  - <<: *layer
-    status: off
-    name: coastline_water
-    id:   coastline_water
-    geometry: "polygon"
-    Datasource:
-      <<: *shapefile
-      file: shp/water_polygons.shp
-  - <<: *layer
-    status: off
-    name: water_features
-    id:   water_features
-    geometry: "polygon"
-    Datasource:
-      <<: *postgis
-      geometry_field: way
-      table: >
-        (
-          SELECT
-            way,
-            man_made
-          FROM planet_osm_line
-          WHERE way && !bbox!
-          AND man_made IN ('pier', 'breakwater', 'groyne')
-          UNION ALL
-          SELECT
-            way,
-            man_made
-          FROM planet_osm_polygon
-          WHERE way && !bbox!
-          AND man_made IN ('pier', 'breakwater', 'groyne')
         ) AS _
   - <<: *layer
     status: off
@@ -1484,30 +1383,6 @@ Layer:
           WHERE way && !bbox!
             AND (barrier IN ('checkpoint', 'debris','gate')
             OR military = 'checkpoint')
-        ) AS _
-  - <<: *layer
-    status: off
-    name: building_outline
-    id:   building_outline
-    properties:
-      "buffer-size": 0
-      minzoom: 12
-    geometry: "polygon"
-    Datasource:
-      <<: *postgis
-      geometry_field: way
-      table: >
-        (
-          -- Make sure this is the same query as the building layer above
-          SELECT
-            way,
-            name,
-            CASE WHEN building IS NOT NULL THEN building
-                 ELSE aeroway END AS type
-          FROM planet_osm_polygon
-          WHERE way && !bbox!
-          AND (building IS NOT NULL
-          OR aeroway IN ('terminal','hangar'))
         ) AS _
   - <<: *layer
     status: off

@@ -38,7 +38,7 @@
 @pitch:             #CAE6A9;
 @sports:            @park;
 
-@parking:           darken(@industrial, 5);
+@parking:           lighten(@industrial, 5%);
 
 @aeroway:           #eaeaea;
 

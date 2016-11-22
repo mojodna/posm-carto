@@ -3,30 +3,176 @@ Map {
   font-directory: url('fonts/');
 }
 
-#landcover {
-  ['mapnik::geometry_type'=polygon] {
-    polygon-fill: #cdc;
-  }
-
-  ['mapnik::geometry_type'=linestring] {
-    line-width: 1;
-    line-color: #cdc;
-  }
-}
-
-#landuse {
-  polygon-fill: #ccd;
-  polygon-comp-op: multiply;
-}
-
 #water {
-  ['mapnik::geometry_type'=polygon] {
-    polygon-fill: #3a86b1;
+  ['mapnik::geometry_type' = polygon] {
+    [man_made = null] {
+      polygon-fill: @water;
+      polygon-pattern-file: url('img/pattern/water.svg');
+      polygon-pattern-alignment: global;
+
+      [zoom <= 5] {
+        polygon-pattern-gamma: 0.4;
+      }
+
+      ::blur {
+        polygon-fill: #ffffff;
+        comp-op: soft-light;
+        image-filters: agg-stack-blur(4, 4);
+        image-filters-inflate: true;
+        polygon-geometry-transform: translate(2, 2);
+        polygon-clip: false;
+      }
+    }
+
+    [man_made != null] {
+      polygon-fill: @land;
+    }
   }
 
-  ['mapnik::geometry_type'=linestring] {
-    line-width: 1;
-    line-color: #3a86b1;
+  ['mapnik::geometry_type' = linestring] {
+    line-color: @water;
+    line-width: 0;
+
+    [zoom >= 12] {
+      line-cap: round;
+      line-join: round;
+    }
+
+    [waterway = 'canal'],
+    [waterway = 'river'] {
+      [zoom = 8] {
+        line-width: 0.1;
+      }
+
+      [zoom = 9] {
+        line-width: 0.2;
+      }
+
+      [zoom = 10] {
+        line-width: 0.4;
+      }
+
+      [zoom = 11] {
+        line-width: 0.6;
+      }
+
+      [zoom = 12] {
+        line-width: 0.8;
+      }
+
+      [zoom = 13] {
+        line-width: 1;
+      }
+
+      [zoom = 14] {
+        line-width: 1.5;
+      }
+
+      [zoom = 15] {
+        line-width: 2;
+      }
+
+      [zoom = 16] {
+        line-width: 3;
+      }
+
+      [zoom = 17] {
+        line-width: 4;
+      }
+
+      [zoom = 18] {
+        line-width: 5;
+      }
+
+      [zoom = 19] {
+        line-width: 6;
+      }
+
+      [zoom >= 20] {
+        line-width: 7;
+      }
+    }
+
+    [waterway = 'stream'],
+    [waterway = 'stream_intermittent'] {
+      [zoom = 13] {
+        line-width: 0.2;
+      }
+
+      [zoom = 14] {
+        line-width: 0.4;
+      }
+
+      [zoom = 15] {
+        line-width: 0.6;
+      }
+
+      [zoom = 16] {
+        line-width: 0.8;
+      }
+
+      [zoom = 17] {
+        line-width: 1;
+      }
+
+      [zoom = 18] {
+        line-width: 1.5;
+      }
+
+      [zoom = 19] {
+        line-width: 2;
+      }
+
+      [zoom >= 20] {
+        line-width: 2.5;
+      }
+    }
+
+    [waterway = 'stream_intermittent'] {
+      [zoom >= 13] {
+        line-dasharray: 20, 3, 2, 3, 2, 3, 2, 3;
+      }
+
+      [zoom >= 15] {
+        line-dasharray: 30, 6, 4, 6, 4, 6, 4, 6;
+      }
+
+      [zoom >= 18] {
+        line-dasharray: 40, 9, 6, 9, 6, 9, 6, 9;
+      }
+    }
+
+    [waterway = 'ditch'],
+    [waterway = 'drain'] {
+      [zoom = 15] {
+        line-width: 0.1;
+      }
+
+      [zoom = 16] {
+        line-width: 0.3;
+      }
+
+      [zoom = 17] {
+        line-width: 0.5;
+      }
+
+      [zoom = 18] {
+        line-width: 0.7;
+      }
+
+      [zoom = 19] {
+        line-width: 1;
+      }
+
+      [zoom >= 20] {
+        line-width: 1.5;
+      }
+    }
+
+    [man_made != null] {
+      line-color: @land;
+      line-width: 4;
+    }
   }
 }
 
@@ -81,307 +227,19 @@ Map {
   }
 }
 
-#buildings {
-  polygon-fill: #cdc79f;
-  line-color: darken(#cdc79f, 10%);
-  line-width: 0.75;
-}
-
-#buildings_3d {
-  building-fill: #cdc79f;
-  building-height: [levels];
-  building-fill-opacity: 0.66;
-}
-
-#tunnels {
-  line-width: [width] * 2;
-  line-color: #999;
-  line-join: round;
-  line-cap: square;
-
-  [zoom >= 13] {
-    line-width: [width];
-    line-dasharray: 7.5, 10;
-    line-opacity: 0.15;
-    comp-op: multiply;
-  }
-}
-
-#infrastructure {
-  ::casing {
-    line-width: 0;
-    line-color: #555;
-    line-join: round;
-    line-cap: round;
-  }
-
-  line-width: [width] * 2;
-  line-color: #666;
-  line-join: round;
-  line-cap: round;
-
-  ::left,
-  ::right {
-    line-width: 0;
-  }
-
-  [zoom >= 13] {
-    line-width: [width];
-  }
-
-  [feature =~ 'aeroway_.*'] {
-    line-cap: butt;
-    line-width: [width];
-  }
-
-  [zoom > 13][feature =~ 'railway_.*'] {
-    ::right {
-      line-color: #777;
-      line-offset: [width];
-      line-width: [width] * 1.5;
-      line-dasharray: 1, 6;
-    }
-  }
-
-  [feature =~ 'highway_.*'] {
-    ::casing {
-      line-width: [width] + 1.5;
-    }
-
-    line-color: #f2f2ec;
-
-    [zoom <= 14],
-    [zoom <= 15][prio < 340],
-    [prio < 150] {
-      ::casing {
-        line-width: 0;
-      }
-
-      line-color: #888;
-    }
-  }
-
-  [zoom >= 16][feature = 'highway_track'] {
-    ::casing {
-      line-width: 0;
-    }
-
-    line-width: 0;
-
-    ::left,
-    ::right {
-      line-width: 0.75;
-      line-color: #888;
-      line-dasharray: 10, 3;
-      line-join: round;
-      line-cap: round;
-
-      [access='private'] {
-        line-color: lighten(mix(#888, red, 50%), 30%);
-      }
-    }
-
-    ::left {
-      line-offset: [width] / -2;
-    }
-
-    ::right {
-      line-offset: [width] / 2;
-    }
-  }
-}
-
-#bridges {
-  ::casing {
-    line-width: 0;
-    line-color: #666;
-    line-join: round;
-    line-cap: butt;
-  }
-
-  line-width: [width] * 2;
-  line-color: #666;
-  line-join: round;
-  line-cap: round;
-
-  ::left,
-  ::right {
-    line-width: 0;
-  }
-
-  [zoom >= 13] {
-    line-width: [width];
-  }
-
-  [zoom > 13][feature =~ 'railway_.*'] {
-    ::right {
-      line-color: #777;
-      line-offset: [width];
-      line-width: [width] * 1.5;
-      line-dasharray: 1, 6;
-    }
-  }
-
-  [feature =~ 'highway_.*'] {
-    ::casing {
-      line-width: [width] + 2;
-    }
-
-    line-color: #f2f2ec;
-
-    [zoom <= 14],
-    [zoom <= 15][prio < 340],
-    [prio < 150] {
-      ::casing {
-        line-width: 0;
-      }
-
-      line-color: #666;
-    }
-  }
-
-  [zoom >= 16][feature = 'highway_track'] {
-    ::casing {
-      line-width: 0;
-    }
-
-    line-width: 0;
-
-    ::left,
-    ::right {
-      line-width: 0.75;
-      line-color: #888;
-      line-dasharray: 10, 3;
-      line-join: round;
-      line-cap: round;
-
-      [access='private'] {
-        line-color: lighten(mix(#888, red, 50%), 30%);
-      }
-    }
-
-    ::left {
-      line-offset: [width] / -2;
-    }
-
-    ::right {
-      line-offset: [width] / 2;
-    }
-  }
-}
-
 /*#routes {
   line-width: 2;
   line-color: #00ff00;
 }*/
 
 #utilities {
-  ['mapnik::geometry_type'=polygon] {
+  ['mapnik::geometry_type' = polygon] {
     polygon-fill: #3f53c1;
   }
 
-  ['mapnik::geometry_type'=linestring] {
+  ['mapnik::geometry_type' = linestring] {
     line-width: 1;
     line-color: #3f53c1;
-  }
-}
-
-// =====================================================================
-// WATER AREAS
-// =====================================================================
-
-/*#ne_10m_lakes,
-#coastline_water,
-#water {
-  polygon-fill: @water;
-  ::pattern {
-    polygon-pattern-file: url('img/pattern/water.svg');
-    polygon-pattern-alignment: global;
-  }
-  [zoom<=5] {
-    polygon-gamma: 0.4;
-  }
-  ::blur {
-    polygon-fill: #ffffff;
-    comp-op: soft-light;
-    image-filters: agg-stack-blur(4,4);
-    image-filters-inflate: true;
-    polygon-geometry-transform: translate(2,2);
-    polygon-clip: false;
-  }
-}*/
-
-// =====================================================================
-// WATER WAYS
-// =====================================================================
-
-#ne_10m_rivers_lake_centerlines_scale_rank[zoom=4][scalerank<4],
-#ne_10m_rivers_lake_centerlines_scale_rank[zoom=5][scalerank<5],
-#ne_10m_rivers_lake_centerlines_scale_rank[zoom=6][scalerank<6],
-#ne_10m_rivers_lake_centerlines_scale_rank[zoom=7][scalerank<7],
-#waterway[zoom>=8][zoom<=11],
-#waterway[class='river'][zoom>=12],
-#waterway[class='canal'][zoom>=12] {
-  line-color: @water;
-  [zoom=8] { line-width: 0.1; }
-  [zoom=9] { line-width: 0.2; }
-  [zoom=10] { line-width: 0.4; }
-  [zoom=11] { line-width: 0.6; }
-  [zoom=12]{ line-width: 0.8; }
-  [zoom=13]{ line-width: 1; }
-  [zoom>12]{
-    line-cap: round;
-    line-join: round;
-  }
-  [zoom=14]{ line-width: 1.5; }
-  [zoom=15]{ line-width: 2; }
-  [zoom=16]{ line-width: 3; }
-  [zoom=17]{ line-width: 4; }
-  [zoom=18]{ line-width: 5; }
-  [zoom=19]{ line-width: 6; }
-  [zoom>19]{ line-width: 7; }
-}
-
-#waterway[class='stream'][zoom>=13],
-#waterway[class='stream_intermittent'][zoom>=13] {
-  line-color: @water;
-  [zoom=13]{ line-width: 0.2; }
-  [zoom=14]{ line-width: 0.4; }
-  [zoom=15]{ line-width: 0.6; }
-  [zoom=16]{ line-width: 0.8; }
-  [zoom=17]{ line-width: 1; }
-  [zoom=18]{ line-width: 1.5; }
-  [zoom=19]{ line-width: 2; }
-  [zoom>19]{ line-width: 2.5; }
-  [class='stream_intermittent'] {
-    [zoom>=13] { line-dasharray:20,3,2,3,2,3,2,3; }
-    [zoom>=15] { line-dasharray:30,6,4,6,4,6,4,6; }
-    [zoom>=18] { line-dasharray:40,9,6,9,6,9,6,9; }
-  }
-}
-
-#waterway[class='ditch'][zoom>=15],
-#waterway[class='drain'][zoom>=15] {
-  line-color: @water;
-  [zoom=15]{ line-width: 0.1; }
-  [zoom=16]{ line-width: 0.3; }
-  [zoom=17]{ line-width: 0.5; }
-  [zoom=18]{ line-width: 0.7; }
-  [zoom=19]{ line-width: 1; }
-  [zoom>19]{ line-width: 1.5; }
-}
-
-// =====================================================================
-// WATER FEATURES
-// =====================================================================
-
-#water_features {
-  ['mapnik::geometry_type'=2] {
-    line-color: @land;
-    line-width: 4;
-  }
-  ['mapnik::geometry_type'=3] {
-    polygon-fill: @land;
   }
 }
 
@@ -389,54 +247,100 @@ Map {
 // LANDUSE
 // =====================================================================
 
-/*#landuse[zoom>=7] {
-  [class='pitch'] {
-    polygon-fill: @pitch;
-    [zoom>14] {
-      line-width:0.8;
-      line-color:lighten(@pitch,8);
+#landcover,
+#landuse {
+  // listed first because it includes a pattern overlay
+  [landuse = 'forest'],
+  [natural = 'wood'] {
+    polygon-fill: @wood;
+    polygon-opacity: 0.25;
+    ::pattern {
+      [zoom >= 15] {
+        polygon-pattern-file: url('img/pattern/forest-low.png');
+        polygon-pattern-opacity: 0.1;
+        polygon-pattern-alignment: global;
+        comp-op: darken;
+      }
+      [zoom >= 16] {
+        polygon-pattern-file: url('img/pattern/forest-med.png');
+        polygon-pattern-opacity: 0.2;
+      }
+      [zoom >= 17] {
+        polygon-pattern-file: url('img/pattern/forest-high.png');
+        polygon-pattern-opacity: 0.25;
+      }
     }
-    [zoom=16] { line-width:1; }
-    [zoom=17] { line-width:1.2; }
-    [zoom=18] { line-width:1.4; }
   }
-  [class='school'] {
+
+  [natural = 'sand'] {
+    polygon-fill: @sand;
+    ::pattern {
+      polygon-pattern-file: url(img/pattern/sand.png);
+    }
+  }
+
+  [leisure = 'pitch'] {
+    polygon-fill: @pitch;
+
+    [zoom>14] {
+      line-width: 0.8;
+      line-color: lighten(@pitch, 8);
+    }
+
+    [zoom=16] { line-width: 1; }
+    [zoom=17] { line-width: 1.2; }
+    [zoom=18] { line-width: 1.4; }
+  }
+
+  [amenity = 'kindergarten'],
+  [amenity = 'school'] {
     polygon-fill: @school;
     polygon-opacity: 0.5;
   }
-  [class='cemetery'] {
+
+  [landuse = 'cemetery'] {
     polygon-fill: @cemetery;
   }
-  [class='hospital'] {
+
+  [amenity = 'hospital'] {
     polygon-fill: @hospital;
   }
-  [class='parking'] {
+
+  [amenity = 'parking'] {
     polygon-fill: @parking;
   }
-  [class='sand'] {
-    polygon-fill: @sand;
-    polygon-pattern-file: url(img/pattern/sand.png);
-  }
-  [class='rock'] {
+
+  [natural = 'bare_rock'],
+  [natural = 'rock'] {
     polygon-fill: @rock;
   }
-  [class='industrial'] {
+
+  [landuse = 'industrial'] {
     polygon-fill: @industrial;
   }
-  [class='military'] {
-    polygon-fill: darken(@industrial,10);
+
+  [landuse = 'military'] {
+    polygon-fill: darken(@industrial, 10);
   }
-  [class='agriculture'] {
+
+  [landuse = 'farmland'],
+  [landuse = 'farm'],
+  [landuse = 'farmyard'],
+  [landuse = 'orchard'],
+  [landuse = 'aquaculture'] {
     polygon-fill: @agriculture;
   }
-  [class='glacier'],
-  [class='piste'] {
+
+  [natural = 'glacier'] {
     polygon-fill: @snow;
   }
-  [class='stadium'],
-  [class='park'],
-  [class='garden'],
-  [class='common'] {
+
+  [leisure = 'stadium'],
+  [leisure = 'park'],
+  [leisure = 'nature_reserve'],
+  [leisure = 'garden'],
+  [leisure = 'common'],
+  [landuse = 'village_green'] {
     polygon-fill: @park;
     polygon-opacity: 0.7;
     [zoom=7] { polygon-opacity: 0.2; }
@@ -444,80 +348,75 @@ Map {
     [zoom=9] { polygon-opacity: 0.6; }
     [zoom=10]{ polygon-opacity: 0.8; }
     [zoom>=11] {
-      line-color: #480;
-      line-opacity: 0.5;
+      line-width: 0.75;
+      line-color: darken(@park, 10);
       line-join: round;
-      [zoom>=10] {
-        line-width: 1.2;
-        line-offset: -1;
-      }
     }
   }
-  [class='common'] [zoom>=15] {
+
+  [leisure='common'] [zoom>=15] {
     line-color: #2e5f01;
     line-width: 2;
     line-dasharray: 4,1;
   }
-  [class='wood'] {
-    polygon-fill: @wood;
-    polygon-opacity: 0.25;
-    ::pattern {
-      [zoom=15] {
-        polygon-pattern-file: url('img/pattern/forest-low.png');
-        polygon-pattern-opacity: 0.1;
-        polygon-pattern-alignment: local;
-        comp-op: darken;
-      }
-      [zoom=16] {
-        polygon-pattern-file: url('img/pattern/forest-med.png');
-        polygon-pattern-opacity: 0.2;
-        polygon-pattern-alignment: local;
-        comp-op: darken;
-      }
-      [zoom>=17] {
-        polygon-pattern-file: url('img/pattern/forest-high.png');
-        polygon-pattern-opacity: 0.25;
-        polygon-pattern-alignment: local;
-        comp-op: darken;
-      }
-    }
-  }
-  [class='grass'] {
+
+  [landuse = 'grass'],
+  [landuse = 'greenfield'],
+  [landuse = 'meadow'],
+  [natural = 'grass'],
+  [natural = 'grassland'] {
     polygon-fill: @grass;
     polygon-opacity: 0.25;
   }
-  [class='scrub'] {
+
+  [natural = 'scrub'] {
     polygon-fill: darken(@grass, 10);
     polygon-opacity:0.25;
   }
-}*/
 
-#landuse_overlay[zoom>=12] {
-  [class='wetland'] {
-    polygon-pattern-opacity: 0.9;
-    [zoom>=12] { polygon-pattern-file:url(img/pattern/wetland-12.png);}
-    [zoom>=14] { polygon-pattern-file:url(img/pattern/wetland-14.png);}
-    [zoom>=15] { polygon-pattern-file:url(img/pattern/wetland-15.png);}
-    [zoom>=16] { polygon-pattern-file:url(img/pattern/wetland-16.png);}
-    [zoom>=17] { polygon-pattern-file:url(img/pattern/wetland-17.png);}
-    [zoom>=18] { polygon-pattern-file:url(img/pattern/wetland-18.png);}
-  }
-  [class='wetland_noveg'] {
-    polygon-pattern-opacity: 0.9;
-    [zoom>=12] { polygon-pattern-file:url(img/pattern/wetland-noveg-12.png);}
-    [zoom>=14] { polygon-pattern-file:url(img/pattern/wetland-noveg-13.png);}
-    [zoom>=16] { polygon-pattern-file:url(img/pattern/wetland-noveg-14.png);}
-    [zoom>=18] { polygon-pattern-file:url(img/pattern/wetland-noveg-15.png);}
+  ::overlay {
+    [natural = 'wetland'],
+    [natural = 'marsh'],
+    [natural = 'swamp'],
+    [natural = 'bog'],
+    [wetland = 'wetland'],
+    [wetland = 'marsh'],
+    [wetland = 'swamp'],
+    [wetland = 'bog'] {
+      [zoom>=12] {
+        polygon-pattern-alignment: global;
+        polygon-pattern-opacity: 0.9;
+        polygon-pattern-file: url(img/pattern/wetland-12.png);
+      }
+      [zoom>=14] { polygon-pattern-file: url(img/pattern/wetland-14.png);}
+      [zoom>=15] { polygon-pattern-file: url(img/pattern/wetland-15.png);}
+      [zoom>=16] { polygon-pattern-file: url(img/pattern/wetland-16.png);}
+      [zoom>=17] { polygon-pattern-file: url(img/pattern/wetland-17.png);}
+      [zoom>=18] { polygon-pattern-file: url(img/pattern/wetland-18.png);}
+    }
+
+    [natural = 'mud'],
+    [natural = 'tidalflat'],
+    [wetland = 'mud'],
+    [wetland = 'tidalflat'] {
+      [zoom>=12] {
+        polygon-pattern-opacity: 0.9;
+        polygon-pattern-alignment: global;
+        polygon-pattern-file:url(img/pattern/wetland-noveg-12.png);
+      }
+      [zoom>=14] { polygon-pattern-file:url(img/pattern/wetland-noveg-13.png);}
+      [zoom>=16] { polygon-pattern-file:url(img/pattern/wetland-noveg-14.png);}
+      [zoom>=18] { polygon-pattern-file:url(img/pattern/wetland-noveg-15.png);}
+    }
   }
 }
-
 
 // =====================================================================
 // AEROWAYS
 // =====================================================================
 
 // polygons other than runways/taxiways
-#aeroway['mapnik::geometry_type'=3][zoom>=12] {
+/*#aeroway['mapnik::geometry_type' = polygon][zoom>=12] {
   polygon-fill: lighten(@aeroway, 40%);
   line-color: #555;
   line-width: 0.5;
@@ -525,18 +424,18 @@ Map {
     polygon-fill: lighten(@parking,20%);
     polygon-opacity: 0.5;
   }
-}
+}*/
 
 // lines and polygon runways/taxiways
-#aeroway[zoom>9] {
-    ['mapnik::geometry_type'=3][type='runway'],
-    ['mapnik::geometry_type'=3][type='taxiway'] {
+/*#aeroway[zoom>9] {
+    ['mapnik::geometry_type'=polygon][type='runway'],
+    ['mapnik::geometry_type'=polygon][type='taxiway'] {
       polygon-fill:darken(@aeroway, 40);
     }
     line-color:darken(@aeroway, 40);
     line-cap:butt;
     line-join:miter;
-    ['mapnik::geometry_type'=2][type='runway'] {
+    ['mapnik::geometry_type'=linestring][type='runway'] {
       [zoom=10]{ line-width:1; }
       [zoom=11]{ line-width:1.5; }
       [zoom=12]{ line-width:2; }
@@ -546,7 +445,7 @@ Map {
       [zoom=16]{ line-width:10; }
       [zoom>=17]{ line-width:12; }
     }
-    ['mapnik::geometry_type'=2][type='taxiway'] {
+    ['mapnik::geometry_type'=linestring][type='taxiway'] {
       [zoom<13]{ line-width:0.2; }
       [zoom=13]{ line-width:1; }
       [zoom=14]{ line-width:1.5; }
@@ -554,13 +453,13 @@ Map {
       [zoom=16]{ line-width:3; }
       [zoom>=17]{ line-width:4; }
     }
-}
+}*/
 
 // =====================================================================
 // BUILDINGS
 // =====================================================================
 
-#building[zoom>12] {
+#buildings {
   ::shadow [zoom>=17] {
     polygon-fill: #000;
     polygon-opacity: 0.3;
@@ -568,6 +467,7 @@ Map {
     image-filters: agg-stack-blur(8,8);
     image-filters-inflate: true;
   }
+
   ::structure {
     [zoom=13] {
       polygon-fill:lighten(@building,4);
@@ -586,20 +486,18 @@ Map {
       //line-width:0.75;
     }
   }
-}
-#building_outline[zoom>15] {
-    [zoom=15] {
-      polygon-opacity: 0.5;
-      polygon-fill:lighten(@building,1);
-      line-color:darken(@building,30);
-      line-width:0.5;
+
+  ::outline {
+    [zoom >= 15] {
+      line-color: darken(@building, 10);
+      line-width: 0.5;
+
+      [zoom >= 16] {
+        line-color: darken(@building, 20);
+        line-width: 0.75;
+      }
     }
-    [zoom>15] {
-      polygon-opacity: 0.5;
-      polygon-fill:@building;
-      line-color:darken(@building,40);
-      line-width:0.75;
-    }
+  }
 }
 
 
@@ -607,7 +505,7 @@ Map {
 // BARRIERS
 // =====================================================================
 
-#barrier_line[zoom>=17][class='gate'] {
+/*#barrier_line[zoom>=17][class='gate'] {
   line-width:2.5;
   line-color:#7e7f88;
 }
@@ -644,13 +542,13 @@ Map {
   ['mapnik::geometry_type'=3] {
     polygon-fill: @dam;
   }
-}
+}*/
 
 // =====================================================================
 // ADMINISTRATIVE BOUNDARIES
 // =====================================================================
 
-#ne_10m_admin_0_boundary_lines_land {
+/*#ne_10m_admin_0_boundary_lines_land {
     outline/opacity: 0.7;
     outline/line-join: round;
     outline/line-cap: round;
@@ -666,8 +564,8 @@ Map {
     [zoom>=4][zoom<=5] { line-width: 1.8; opacity:0.75; }
     [zoom>=6][zoom<=7] { line-width: 2.2; opacity:0.6; }
     [zoom>=8][zoom<=9] { line-width: 2.8; opacity:0.4; }
-}
-#ne_10m_admin_1_states_provinces_lines[zoom>=4][scalerank<=2],
+}*/
+/*#ne_10m_admin_1_states_provinces_lines[zoom>=4][scalerank<=2],
 #ne_10m_admin_1_states_provinces_lines[zoom>=6] {
     outline/opacity: 0.7;
     outline/line-join: round;
@@ -683,7 +581,7 @@ Map {
     [zoom>=4][zoom<=5] { line-width: 1.4; opacity:0.75; }
     [zoom>=6][zoom<=7] { line-width: 1.8; opacity:0.75; }
     [zoom>=8][zoom<=9] { line-width: 2.2; opacity:0.6; }
-}
+}*/
 /*#admin[zoom>=2][admin_level<=2],
 #admin[zoom>=6][admin_level<=4],
 #admin[zoom>=8][admin_level<=6],
